@@ -1,0 +1,127 @@
+// lib/services/terminal_service.dart
+// Manages a single WebSocket connection to /ws/terminal
+// Bidirectional: send text input, receive terminal output strings
+import 'dart:async';
+import 'dart:convert';
+import 'package:web_socket_channel/web_socket_channel.dart';
+
+enum TermState { disconnected, connecting, connected }
+
+class TerminalService {
+  TerminalService(this._baseUrl, {required this.token});
+
+  String _baseUrl;
+  String token;
+
+  WebSocketChannel? _ch;
+  StreamSubscription? _sub;
+
+  final _outCtrl   = StreamController<String>.broadcast();
+  final _stateCtrl = StreamController<TermState>.broadcast();
+
+  Stream<String>    get output => _outCtrl.stream;
+  Stream<TermState> get state  => _stateCtrl.stream;
+
+  TermState _state = TermState.disconnected;
+  TermState get currentState => _state;
+
+  bool _disposed = false;
+  int  _retryS   = 2;
+
+  void connect() {
+    if (_disposed) return;
+    print('[TermService] connect() forcing disconnect then tryConnect. retryS=$_retryS');
+    _retryS = 2;
+    disconnect();
+    _tryConnect();
+  }
+
+  void _tryConnect() {
+    if (_disposed) return;
+    print('[TermService] _tryConnect! baseUrl=$_baseUrl');
+    _setState(TermState.connecting);
+
+    Uri uri;
+    try {
+      final t = Uri.encodeQueryComponent(token);
+      if (_baseUrl.startsWith('https://')) {
+        uri = Uri.parse(
+          '${_baseUrl.replaceFirst('https://', 'wss://')}/ws/terminal?token=$t');
+      } else if (_baseUrl.startsWith('http://')) {
+        uri = Uri.parse(
+          '${_baseUrl.replaceFirst('http://', 'ws://')}/ws/terminal?token=$t');
+      } else {
+        uri = Uri.parse('ws://$_baseUrl/ws/terminal?token=$t');
+      }
+    } catch (_) { 
+      print('[TermService] Invalid URI, delaying reconnect.');
+      _scheduleReconnect(); return; 
+    }
+
+    try {
+      print('[TermService] WebSocketChannel.connect: $uri');
+      _ch = WebSocketChannel.connect(uri);
+      _ch!.ready.then((_) {
+        if (_disposed) return;
+        print('[TermService] WebSocket .ready! Marking as CONNECTED.');
+        _retryS = 2;
+        _setState(TermState.connected);
+      }).catchError((e) {
+        print('[TermService] WebSocket ready error: $e');
+        _scheduleReconnect();
+      });
+    } catch (e) { 
+      print('[TermService] connection error: $e');
+      _scheduleReconnect(); return; 
+    }
+
+    _sub = _ch!.stream.listen(
+      (raw) {
+        if (raw is String) _outCtrl.add(raw);
+      },
+      onError: (e) {
+        print('[TermService] WebSocket onError! $e');
+        _scheduleReconnect();
+      },
+      onDone:  () {
+        print('[TermService] WebSocket onDone! scheduling reconnect.');
+        _scheduleReconnect();
+      },
+      cancelOnError: true,
+    );
+  }
+
+  /// Send raw keystrokes/text to the shell
+  void sendInput(String text) {
+    try { _ch?.sink.add(text); } catch (_) {}
+  }
+
+  /// Send terminal resize
+  void sendResize(int cols, int rows) {
+    final msg = jsonEncode({'type': 'resize', 'cols': cols, 'rows': rows});
+    try { _ch?.sink.add(msg); } catch (_) {}
+  }
+
+  void _setState(TermState s) { _state = s; _stateCtrl.add(s); }
+
+  void _scheduleReconnect() {
+    if (_disposed) return;
+    _setState(TermState.disconnected);
+    Future.delayed(Duration(seconds: _retryS), _tryConnect);
+    _retryS = (_retryS * 2).clamp(2, 30);
+  }
+
+  void disconnect() {
+    _sub?.cancel();
+    _ch?.sink.close();
+    _ch = null;
+    _setState(TermState.disconnected);
+  }
+
+  void dispose() {
+    _disposed = true;
+    disconnect();
+    _outCtrl.close();
+    _stateCtrl.close();
+  }
+}

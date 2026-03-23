@@ -1,0 +1,106 @@
+// lib/services/ws_service.dart
+import 'dart:async';
+import 'dart:convert';
+import 'package:web_socket_channel/web_socket_channel.dart';
+import '../models/telemetry.dart';
+
+enum WsState { disconnected, connecting, connected }
+
+class WsService {
+  WsService(this._baseUrl, {required this.token});
+
+  String _baseUrl;
+  String token; // Bearer token for query param auth
+
+  WebSocketChannel? _ch;
+  StreamSubscription? _sub;
+  final _ctrl      = StreamController<TelemetryFrame>.broadcast();
+  final _stateCtrl = StreamController<WsState>.broadcast();
+
+  Stream<TelemetryFrame> get stream => _ctrl.stream;
+  Stream<WsState>        get state  => _stateCtrl.stream;
+
+  WsState _state = WsState.disconnected;
+  WsState get currentState => _state;
+
+  bool _disposed = false;
+  int  _retryS   = 2;
+
+  void updateUrl(String url) {
+    _baseUrl = url;
+    disconnect();
+    Future.delayed(const Duration(milliseconds: 300), connect);
+  }
+
+  void connect() {
+    if (_disposed) return;
+    _retryS = 2;
+    _tryConnect();
+  }
+
+  void _tryConnect() {
+    if (_disposed) return;
+    _setState(WsState.connecting);
+
+    Uri uri;
+    try {
+      final tokenParam = Uri.encodeQueryComponent(token);
+      if (_baseUrl.startsWith('https://')) {
+        uri = Uri.parse(
+          '${_baseUrl.replaceFirst('https://', 'wss://')}/ws/telemetry?token=$tokenParam');
+      } else if (_baseUrl.startsWith('http://')) {
+        uri = Uri.parse(
+          '${_baseUrl.replaceFirst('http://', 'ws://')}/ws/telemetry?token=$tokenParam');
+      } else {
+        uri = Uri.parse('ws://$_baseUrl/ws/telemetry?token=$tokenParam');
+      }
+    } catch (_) {
+      _scheduleReconnect();
+      return;
+    }
+
+    try {
+      _ch = WebSocketChannel.connect(uri);
+    } catch (_) {
+      _scheduleReconnect();
+      return;
+    }
+
+    _sub = _ch!.stream.listen(
+      (raw) {
+        _retryS = 2;
+        _setState(WsState.connected);
+        try {
+          final j = jsonDecode(raw as String) as Map<String, dynamic>;
+          _ctrl.add(TelemetryFrame.fromJson(j));
+        } catch (_) {}
+      },
+      onError: (_) => _scheduleReconnect(),
+      onDone:  ()  => _scheduleReconnect(),
+      cancelOnError: true,
+    );
+  }
+
+  void _setState(WsState s) { _state = s; _stateCtrl.add(s); }
+
+  void _scheduleReconnect() {
+    if (_disposed) return;
+    _setState(WsState.disconnected);
+    Future.delayed(Duration(seconds: _retryS), _tryConnect);
+    _retryS = (_retryS * 2).clamp(2, 30);
+  }
+
+  void disconnect() {
+    _sub?.cancel();
+    _ch?.sink.close();
+    _ch = null;
+    _setState(WsState.disconnected);
+  }
+
+  void dispose() {
+    _disposed = true;
+    disconnect();
+    _ctrl.close();
+    _stateCtrl.close();
+  }
+}

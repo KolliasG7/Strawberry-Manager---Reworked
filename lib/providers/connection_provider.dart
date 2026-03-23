@@ -1,0 +1,310 @@
+// lib/providers/connection_provider.dart
+import 'dart:async';
+import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../models/telemetry.dart';
+import '../services/api_service.dart';
+import '../services/ws_service.dart';
+import '../services/notification_service.dart';
+
+enum ConnState { idle, connecting, connected, error, needsAuth }
+
+class ConnectionProvider extends ChangeNotifier {
+  ConnectionProvider();
+
+  // Settings
+  String _rawInput = '';
+  bool   _isTunnel = false;
+  String get rawInput  => _rawInput;
+  bool   get isTunnel  => _isTunnel;
+
+  // Auth
+  String _token = '';
+  String get token => _token;
+  bool   get hasToken => _token.isNotEmpty;
+
+  // Connection state
+  ConnState _connState = ConnState.idle;
+  String?   _error;
+  ConnState get connState   => _connState;
+  String?   get error       => _error;
+  bool      get isConnected => _connState == ConnState.connected;
+
+  // Services
+  ApiService? _api;
+  WsService?  _ws;
+  ApiService? get api => _api;
+  WsService?  get ws  => _ws;
+
+  // Live telemetry
+  TelemetryFrame? _frame;
+  TelemetryFrame? get frame => _frame;
+
+  StreamSubscription? _wsSub;
+  StreamSubscription? _wsStateSub;
+
+  // History
+  final List<double> cpuHistory  = [];
+  final List<double> ramHistory  = [];
+  final List<double> tempHistory = [];
+  final List<double> fanHistory  = [];
+
+  // Prefs
+  bool _showCpuGraph      = true;
+  bool _showRamGraph      = true;
+  bool _showThermalGraph  = true;
+  bool _showNotifications = true;
+  bool get showCpuGraph      => _showCpuGraph;
+  bool get showRamGraph      => _showRamGraph;
+  bool get showThermalGraph  => _showThermalGraph;
+  bool get showNotifications => _showNotifications;
+
+  void toggleCpuGraph(bool v)      { _showCpuGraph = v;      _save(); notifyListeners(); }
+  void toggleRamGraph(bool v)      { _showRamGraph = v;      _save(); notifyListeners(); }
+  void toggleThermalGraph(bool v)  { _showThermalGraph = v;  _save(); notifyListeners(); }
+  void toggleNotifications(bool v) {
+    _showNotifications = v; _save();
+    if (!v) NotificationService.cancelStatus();
+    notifyListeners();
+  }
+
+  bool _critNotifSent = false;
+  String? _lastNotifBody;
+
+  // ── Persist ───────────────────────────────────────────────────────────
+
+  Future<void> loadSaved() async {
+    final p = await SharedPreferences.getInstance();
+    _rawInput          = p.getString('ps4_addr')          ?? '';
+    _isTunnel          = p.getBool('ps4_is_tunnel')        ?? false;
+    _token             = p.getString('ps4_token')          ?? '';
+    _showCpuGraph      = p.getBool('show_cpu_graph')       ?? true;
+    _showRamGraph      = p.getBool('show_ram_graph')       ?? true;
+    _showThermalGraph  = p.getBool('show_thermal_graph')   ?? true;
+    _showNotifications = p.getBool('show_notifications')   ?? true;
+    notifyListeners();
+  }
+
+  Future<void> _save() async {
+    final p = await SharedPreferences.getInstance();
+    await p.setString('ps4_addr',            _rawInput);
+    await p.setBool  ('ps4_is_tunnel',       _isTunnel);
+    await p.setString('ps4_token',           _token);
+    await p.setBool  ('show_cpu_graph',      _showCpuGraph);
+    await p.setBool  ('show_ram_graph',      _showRamGraph);
+    await p.setBool  ('show_thermal_graph',  _showThermalGraph);
+    await p.setBool  ('show_notifications',  _showNotifications);
+  }
+
+  Future<void> _saveToken(String t) async {
+    _token = t;
+    final p = await SharedPreferences.getInstance();
+    await p.setString('ps4_token', t);
+  }
+
+  // ── Connect ───────────────────────────────────────────────────────────
+  // Flow:
+  //   1. Health check (open endpoint — always passes if server is up)
+  //   2. Verify saved token
+  //   3a. Token valid → connect WS, go to dashboard
+  //   3b. Token invalid/missing → set needsAuth, caller shows password dialog
+
+  Future<void> connect(String input) async {
+    _rawInput  = input.trim();
+    _isTunnel  = _detectTunnel(_rawInput);
+    _error     = null;
+    _connState = ConnState.connecting;
+    notifyListeners();
+
+    _teardown();
+
+    final base = _effectiveBase(_rawInput);
+    _api = ApiService(base, token: _token);
+
+    // 1. Health check
+    try {
+      final health = await _api!.getHealth();
+      if (health['status'] != 'ok' && health['status'] != 'degraded') {
+        throw Exception('Server unhealthy: ${health['status']}');
+      }
+    } catch (e) {
+      _error = e.toString();
+      _connState = ConnState.error;
+      notifyListeners();
+      return;
+    }
+
+    // 2. Verify token
+    final tokenOk = await _api!.verifyToken();
+    if (!tokenOk) {
+      _connState = ConnState.needsAuth;
+      notifyListeners();
+      return; // caller must call login(password) then connectWithToken()
+    }
+
+    await _save();
+    _connectWs(base);
+  }
+
+  // Called by the password dialog after successful login
+  Future<void> login(String password) async {
+    if (_api == null) return;
+    _error = null;
+    notifyListeners();
+
+    try {
+      final t = await _api!.login(password);
+      await _saveToken(t);
+    } catch (e) {
+      _error = e.toString();
+      notifyListeners();
+      return;
+    }
+
+    await _save();
+    _connectWs(_api!.baseUrl);
+  }
+
+  void _connectWs(String base) async {
+    try {
+      final profs = await _api!.getLedProfiles();
+      final p = await SharedPreferences.getInstance();
+      await p.setString('ps4_led_profiles', profs.join(','));
+    } catch (_) {}
+
+    _ws = WsService(base, token: _token);
+
+    _wsStateSub = _ws!.state.listen((s) {
+      if (s == WsState.connected && _connState != ConnState.connected) {
+        _connState = ConnState.connected;
+        notifyListeners();
+      } else if (s == WsState.disconnected && _connState == ConnState.connected) {
+        _connState = ConnState.connecting;
+        notifyListeners();
+      }
+    });
+
+    _wsSub = _ws!.stream.listen(_onFrame);
+    _ws!.connect();
+    notifyListeners();
+  }
+
+  void _onFrame(TelemetryFrame f) {
+    _frame = f;
+    _connState = ConnState.connected;
+
+    if (f.cpu != null) { cpuHistory.add(f.cpu!.percent); if (cpuHistory.length > 50) cpuHistory.removeAt(0); }
+    if (f.ram != null) { ramHistory.add(f.ram!.percent); if (ramHistory.length > 50) ramHistory.removeAt(0); }
+    if (f.fan != null) {
+      tempHistory.add(f.fan!.apuTempC); if (tempHistory.length > 50) tempHistory.removeAt(0);
+      fanHistory.add(f.fan!.rpm.toDouble()); if (fanHistory.length > 50) fanHistory.removeAt(0);
+    }
+
+    final tunnelUrl = f.tunnel?.url;
+    if (tunnelUrl != null && f.tunnel!.isRunning && _isTunnel) {
+      if (_ws != null && !_ws!.currentState.toString().contains('connected')) {
+        _ws!.updateUrl(tunnelUrl);
+      }
+    }
+
+    _sendNotification(f);
+    notifyListeners();
+  }
+
+  // ── Tunnel ────────────────────────────────────────────────────────────
+
+  Future<String> startTunnel() async {
+    final result = await _api!.startTunnel();
+    final url = result['url'] as String?;
+    if (url == null) throw Exception('No URL returned');
+
+    _rawInput = url;
+    _isTunnel = true;
+    await _save();
+
+    final newApi = ApiService(url, token: _token);
+    final newWs  = WsService(url, token: _token);
+
+    await Future.delayed(const Duration(seconds: 5));
+    _teardown();
+    _api = newApi;
+    _ws  = newWs;
+
+    _wsStateSub = _ws!.state.listen((s) {
+      if (s == WsState.connected) { _connState = ConnState.connected; notifyListeners(); }
+    });
+    _wsSub = _ws!.stream.listen(_onFrame);
+    _ws!.connect();
+    notifyListeners();
+    return url;
+  }
+
+  Future<void> stopTunnel() async => _api?.stopTunnel();
+
+  // ── Disconnect ────────────────────────────────────────────────────────
+
+  void disconnect() {
+    _teardown();
+    _connState = ConnState.idle;
+    _frame     = null;
+    notifyListeners();
+    NotificationService.cancelStatus();
+  }
+
+  /// Clear saved token (force re-auth on next connect)
+  Future<void> clearToken() async {
+    await _saveToken('');
+    if (_api != null) _api!.token = '';
+  }
+
+  void _teardown() {
+    _wsSub?.cancel();
+    _wsStateSub?.cancel();
+    _ws?.dispose();
+    _ws = null; _wsSub = null; _wsStateSub = null;
+  }
+
+  // ── Notification ──────────────────────────────────────────────────────
+
+  void _sendNotification(TelemetryFrame f) {
+    if (!_showNotifications) return;
+    final cpu  = f.cpu?.percent    ?? 0;
+    final temp = f.fan?.apuTempC   ?? 0;
+    final rpm  = f.fan?.rpm        ?? 0;
+    final ram  = f.ram?.percent    ?? 0;
+    final net  = f.primaryNet;
+    String netStr = '';
+    if (net != null) {
+      final tx = (net.bytesSentS / 1024 / 1024).toStringAsFixed(1);
+      final rx = (net.bytesRecvS / 1024 / 1024).toStringAsFixed(1);
+      netStr = '  ▼${rx}M/s ▲${tx}M/s';
+    }
+    final body = 'CPU ${cpu.toStringAsFixed(0)}% • RAM ${ram.toStringAsFixed(0)}%\n'
+               '${temp.toStringAsFixed(0)}°C • ${rpm == 0 ? "Fan off" : "$rpm RPM"} • Up ${f.uptimeFormatted}\n'
+               'Net ${net?.iface ?? "lo"}$netStr';
+    if (body != _lastNotifBody) {
+      _lastNotifBody = body;
+      NotificationService.showStatus(title: 'PlayStation4', body: body);
+      NotificationService.storeLastTemp(temp);
+    }
+    if (temp >= 90 && !_critNotifSent) {
+      _critNotifSent = true;
+      NotificationService.showAlert(title: '⚠️ PS4 Temp Critical',
+        body: 'APU temperature: ${temp.toStringAsFixed(0)}°C');
+    } else if (temp < 85) {
+      _critNotifSent = false;
+    }
+  }
+
+  bool _detectTunnel(String s) =>
+    s.startsWith('https://') || s.startsWith('http://') ||
+    s.contains('.trycloudflare.com') || s.contains('.cloudflare');
+
+  String _effectiveBase(String input) {
+    if (_detectTunnel(input)) return input.startsWith('http') ? input : 'https://$input';
+    return input;
+  }
+
+  @override
+  void dispose() { _teardown(); super.dispose(); }
+}

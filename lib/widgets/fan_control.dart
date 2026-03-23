@@ -1,0 +1,140 @@
+// lib/widgets/fan_control.dart — Braška fan threshold
+import 'package:flutter/material.dart';
+import '../services/api_service.dart';
+import '../theme.dart';
+
+class FanControlCard extends StatefulWidget {
+  const FanControlCard({super.key, required this.api, required this.currentThreshold});
+  final ApiService api;
+  final int currentThreshold;
+  @override State<FanControlCard> createState() => _FanControlCardState();
+}
+
+class _FanControlCardState extends State<FanControlCard>
+    with SingleTickerProviderStateMixin {
+  static const _min = 45.0, _max = 85.0;
+  late double _val;
+  bool _writing = false;
+  int? _confirmed;
+  String? _err;
+  late AnimationController _pulse;
+
+  @override
+  void initState() {
+    super.initState();
+    _val = widget.currentThreshold.toDouble().clamp(_min, _max);
+    _pulse = AnimationController(vsync: this,
+      duration: const Duration(milliseconds: 1200))..repeat(reverse: true);
+  }
+
+  @override
+  void didUpdateWidget(FanControlCard o) {
+    super.didUpdateWidget(o);
+    if (!_writing) _val = widget.currentThreshold.toDouble().clamp(_min, _max);
+  }
+
+  Future<void> _commit(double v) async {
+    final t = v.round();
+    setState(() { _writing = true; _err = null; });
+    try {
+      final c = await widget.api.setFanThreshold(t);
+      if (!mounted) return;
+      setState(() { _confirmed = c; _writing = false; _val = c.toDouble(); });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _err = e.toString(); _writing = false;
+        _val = widget.currentThreshold.toDouble().clamp(_min, _max);
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final displayVal = _val.round();
+    final pct  = (_val - _min) / (_max - _min);
+    // Color shifts warm → hot as threshold rises
+    final tColor = displayVal >= 80 ? Bk.red
+                 : displayVal >= 70 ? Bk.amber : Bk.cyan;
+
+    return GlassCard(
+      tint: tColor.withOpacity(0.06),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+          const StatLabel('FAN THRESHOLD'),
+          Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            AnimatedBuilder(
+              animation: _pulse,
+              builder: (_, __) => Text('$displayVal',
+                style: TextStyle(
+                  color: tColor, fontSize: 36,
+                  fontWeight: FontWeight.w900, letterSpacing: -1,
+                )),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Text('°C', style: TextStyle(
+                color: tColor.withOpacity(0.6), fontSize: 14,
+                fontWeight: FontWeight.w700)),
+            ),
+            if (_writing) ...[
+              const SizedBox(width: 12),
+              SizedBox(width: 16, height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2, color: tColor)),
+            ],
+          ]),
+        ]),
+        const SizedBox(height: 16),
+
+
+        SliderTheme(
+          data: SliderTheme.of(context).copyWith(
+            activeTrackColor:   tColor,
+            inactiveTrackColor: Bk.border,
+            thumbColor:         Colors.white,
+            overlayColor:       tColor.withOpacity(0.12),
+            trackHeight:        4,
+            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 9),
+            overlayShape: const RoundSliderOverlayShape(overlayRadius: 18),
+          ),
+          child: Slider(
+            value: _val, min: _min, max: _max, divisions: 40,
+            onChanged: _writing ? null : (v) => setState(() => _val = v),
+            onChangeEnd: _writing ? null : _commit,
+          ),
+        ),
+
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+            Text('${_min.round()}°C',
+              style: const TextStyle(color: Bk.textDim, fontSize: 10)),
+            Text('${_max.round()}°C',
+              style: const TextStyle(color: Bk.textDim, fontSize: 10)),
+          ]),
+        ),
+        const SizedBox(height: 10),
+
+        // Status
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 300),
+          child: _confirmed != null && !_writing
+            ? Text('✓ Hardware confirmed: $_confirmed°C',
+                key: const ValueKey('ok'),
+                style: const TextStyle(color: Bk.green, fontSize: 11))
+            : _err != null
+              ? Text('✗ $_err',
+                  key: const ValueKey('err'),
+                  style: const TextStyle(color: Bk.red, fontSize: 11))
+              : const SizedBox.shrink(key: ValueKey('none')),
+        ),
+        const SizedBox(height: 6),
+        const Text('Release slider to apply · kernel RMW cycle',
+          style: TextStyle(color: Bk.textDim, fontSize: 10)),
+      ]),
+    );
+  }
+
+  @override void dispose() { _pulse.dispose(); super.dispose(); }
+}
