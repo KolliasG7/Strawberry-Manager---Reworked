@@ -22,11 +22,21 @@ class _TerminalScreenState extends State<TerminalScreen>
   late TerminalService _term;
   final _inputCtrl  = TextEditingController();
   final _scrollCtrl = ScrollController();
+  final _inputFocus = FocusNode();
   final _lines      = <String>[];
   StreamSubscription? _outSub;
   StreamSubscription? _stateSub;
   bool _connected = false;
   String _partial = '';
+
+  /// Send a raw byte sequence to the pty and keep focus on the input so
+  /// the iOS soft keyboard stays up while the user chains accessory keys.
+  void _sendRaw(String bytes) {
+    if (!_connected) return;
+    HapticFeedback.selectionClick();
+    _term.sendInput(bytes);
+    if (!_inputFocus.hasFocus) _inputFocus.requestFocus();
+  }
 
   @override
   void initState() {
@@ -111,6 +121,16 @@ class _TerminalScreenState extends State<TerminalScreen>
           ),
         ),
       ),
+      // Keyboard accessory bar — only rendered while the iOS soft keyboard
+      // is actually on screen (viewInsets.bottom > 0) so it doesn't steal
+      // vertical space when the terminal is idle. Chips send raw pty
+      // sequences so users get Tab/Esc/arrows/Ctrl-C-D-Z without a
+      // hardware keyboard.
+      if (MediaQuery.of(context).viewInsets.bottom > 0)
+        _ShellKeyboardBar(
+          enabled: _connected,
+          onSend: _sendRaw,
+        ),
       Padding(
         padding: EdgeInsets.fromLTRB(
           AppSpacing.lg, 0, AppSpacing.lg,
@@ -120,6 +140,7 @@ class _TerminalScreenState extends State<TerminalScreen>
         ),
         child: _InputRow(
           controller: _inputCtrl,
+          focusNode: _inputFocus,
           connected: _connected,
           onSubmit: _sendLine,
         ),
@@ -152,6 +173,7 @@ class _TerminalScreenState extends State<TerminalScreen>
     _term.dispose();
     _inputCtrl.dispose();
     _scrollCtrl.dispose();
+    _inputFocus.dispose();
     super.dispose();
   }
 }
@@ -247,10 +269,12 @@ class _Header extends StatelessWidget {
 class _InputRow extends StatelessWidget {
   const _InputRow({
     required this.controller,
+    required this.focusNode,
     required this.connected,
     required this.onSubmit,
   });
   final TextEditingController controller;
+  final FocusNode focusNode;
   final bool connected;
   final ValueChanged<String> onSubmit;
 
@@ -267,6 +291,7 @@ class _InputRow extends StatelessWidget {
         const SizedBox(width: AppSpacing.sm),
         Expanded(child: TextField(
           controller: controller,
+          focusNode: focusNode,
           enabled: connected,
           style: const TextStyle(
             color: Bk.textPri, fontFamily: 'monospace', fontSize: 13),
@@ -290,6 +315,111 @@ class _InputRow extends StatelessWidget {
           ),
         ),
       ]),
+    );
+  }
+}
+
+// ── Shell keyboard accessory bar ──────────────────────────────────────────
+// Thin horizontally-scrollable strip above the input field that renders
+// while the iOS soft keyboard is visible. Each chip writes a raw byte
+// sequence straight to the pty stream, since iOS's soft keyboard omits
+// Tab/Esc/Ctrl/arrows. Disabled chips are rendered muted but never
+// consume taps so they don't accidentally dismiss the keyboard.
+
+class _ShellKeyboardBar extends StatelessWidget {
+  const _ShellKeyboardBar({
+    required this.enabled,
+    required this.onSend,
+  });
+  final bool enabled;
+  final void Function(String bytes) onSend;
+
+  @override
+  Widget build(BuildContext context) {
+    // (label, byte sequence, optional narrow-width flag)
+    final keys = <(String, String, bool)>[
+      ('Tab',   '\t',       false),
+      ('Esc',   '\x1b',     false),
+      ('Ctrl+C','\x03',     false),
+      ('Ctrl+D','\x04',     false),
+      ('Ctrl+Z','\x1a',     false),
+      ('\u2191','\x1b[A',   true),
+      ('\u2193','\x1b[B',   true),
+      ('\u2190','\x1b[D',   true),
+      ('\u2192','\x1b[C',   true),
+    ];
+    return Container(
+      height: 40,
+      margin: const EdgeInsets.fromLTRB(
+          AppSpacing.lg, 0, AppSpacing.lg, AppSpacing.xs),
+      decoration: BoxDecoration(
+        color: Bk.surface1.withOpacity(0.55),
+        borderRadius: BorderRadius.circular(AppRadii.pill),
+        border: Border.all(color: Bk.glassBorder),
+      ),
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.sm, vertical: 4),
+        itemCount: keys.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 6),
+        itemBuilder: (_, i) {
+          final (label, bytes, narrow) = keys[i];
+          return _KbChip(
+            label: label,
+            narrow: narrow,
+            enabled: enabled,
+            onTap: () => onSend(bytes),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _KbChip extends StatelessWidget {
+  const _KbChip({
+    required this.label,
+    required this.narrow,
+    required this.enabled,
+    required this.onTap,
+  });
+  final String label;
+  final bool narrow;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Opacity(
+      opacity: enabled ? 1 : 0.4,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(AppRadii.sm),
+          onTap: enabled ? onTap : null,
+          child: Container(
+            constraints: BoxConstraints(minWidth: narrow ? 36 : 48),
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: Bk.glassDefault.withOpacity(0.6),
+              borderRadius: BorderRadius.circular(AppRadii.sm),
+              border: Border.all(color: Bk.glassBorder),
+            ),
+            child: Text(
+              label,
+              style: TextStyle(
+                color: enabled ? Bk.textPri : Bk.textDim,
+                fontSize: 12,
+                fontFamily: 'monospace',
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.2,
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

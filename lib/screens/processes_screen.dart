@@ -24,6 +24,11 @@ class _ProcessesScreenState extends State<ProcessesScreen>
   String _filter = '';
   DateTime? _lastUpdated;
   DateTime? _lastSuccess;
+  // Prevents overlapping `_refresh` calls when the server is slow: the
+  // 3 s poller or a pull-to-refresh can otherwise fire a second request
+  // before the first one returns, producing out-of-order state updates
+  // and doubling the bandwidth cost on flaky links.
+  bool _inFlight = false;
 
   @override
   void initState() {
@@ -62,6 +67,8 @@ class _ProcessesScreenState extends State<ProcessesScreen>
   }
 
   Future<void> _refresh() async {
+    if (_inFlight) return;
+    _inFlight = true;
     try {
       final p = await widget.api.getProcesses(limit: 60, sortBy: _sort);
       if (!mounted) return;
@@ -79,6 +86,8 @@ class _ProcessesScreenState extends State<ProcessesScreen>
         _loading = false;
         _lastUpdated = DateTime.now();
       });
+    } finally {
+      _inFlight = false;
     }
   }
 

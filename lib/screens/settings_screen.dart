@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../providers/connection_provider.dart';
@@ -311,11 +312,73 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ]),
                   ),
                 ],
+                const SizedBox(height: AppSpacing.xxl),
+                const _AboutFooter(),
               ]),
             )),
           ]),
         ),
       ),
+    );
+  }
+}
+
+// ── About footer ──────────────────────────────────────────────────────────
+// Tiny centered block at the bottom of Settings showing the app version and
+// build number (pulled from pubspec via package_info_plus) plus a credit
+// line. Makes it obvious which build is running when reporting bugs; no
+// action, no network, just static identification.
+
+class _AboutFooter extends StatefulWidget {
+  const _AboutFooter();
+
+  @override
+  State<_AboutFooter> createState() => _AboutFooterState();
+}
+
+class _AboutFooterState extends State<_AboutFooter> {
+  String? _versionLine;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      if (!mounted) return;
+      setState(() => _versionLine = 'v${info.version} · build ${info.buildNumber}');
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _versionLine = 'version unavailable');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: AppSpacing.md),
+      child: Column(children: [
+        Text(
+          _versionLine ?? ' ',
+          style: const TextStyle(
+            color: Bk.textDim,
+            fontSize: 11,
+            fontFamily: 'monospace',
+          ),
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          'by rmux · reworked by KolliasG7',
+          style: TextStyle(
+            color: Bk.textDim,
+            fontSize: 10,
+            letterSpacing: 0.3,
+          ),
+        ),
+      ]),
     );
   }
 }

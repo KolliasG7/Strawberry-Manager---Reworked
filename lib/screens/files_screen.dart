@@ -25,10 +25,16 @@ class _FilesScreenState extends State<FilesScreen> {
   final List<String> _history = ['/'];
   DateTime? _lastUpdated;
   DateTime? _lastSuccess;
+  // Guards against overlapping _load calls when the user pulls to refresh
+  // while a prior listing is still in flight, or when _navigate/_load fire
+  // in quick succession on a slow link.
+  bool _loadInFlight = false;
 
   @override void initState() { super.initState(); _load('/'); }
 
   Future<void> _load(String path) async {
+    if (_loadInFlight) return;
+    _loadInFlight = true;
     setState(() { _loading = true; _err = null; });
     try {
       final data = await widget.api.listFiles(path);
@@ -47,6 +53,8 @@ class _FilesScreenState extends State<FilesScreen> {
         _loading = false;
         _lastUpdated = DateTime.now();
       });
+    } finally {
+      _loadInFlight = false;
     }
   }
 
@@ -110,7 +118,10 @@ class _FilesScreenState extends State<FilesScreen> {
     }
   }
 
-  Future<void> _delete(Map<String, dynamic> item) async {
+  /// Show a confirm dialog; returns true if the user confirms delete.
+  /// Kept separate from the actual delete so `Dismissible.confirmDismiss`
+  /// can invoke it directly and only commit the slide-out on approval.
+  Future<bool> _confirmDelete(Map<String, dynamic> item) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -130,13 +141,21 @@ class _FilesScreenState extends State<FilesScreen> {
         ],
       ),
     );
-    if (confirmed != true) return;
+    return confirmed == true;
+  }
 
+  /// Perform the actual delete call and refresh the list. Errors are
+  /// surfaced via snackbar; the row stays hidden because the Dismissible
+  /// already committed, and the refresh will either remove it (success)
+  /// or restore it (failure).
+  Future<void> _performDelete(Map<String, dynamic> item) async {
     try {
       await widget.api.deleteFile(item['path'] as String);
       _load(_path);
     } catch (e) {
+      if (!mounted) return;
       _snack('Error: $e');
+      _load(_path);
     }
   }
 
@@ -194,12 +213,7 @@ class _FilesScreenState extends State<FilesScreen> {
                           ),
                         )
                       : _items.isEmpty
-                          ? const Center(
-                              key: ValueKey('empty'),
-                              child: Text('Empty directory',
-                                style: TextStyle(
-                                  color: Bk.textDim, fontSize: 13)),
-                            )
+                          ? const _EmptyDir(key: ValueKey('empty'))
                           : _FileList(
                               key: const ValueKey('list'),
                               items: _items,
@@ -213,7 +227,8 @@ class _FilesScreenState extends State<FilesScreen> {
                               onDownload: (i) {
                                 if (i['is_dir'] != true) _download(i);
                               },
-                              onDelete: _delete,
+                              onConfirmDelete: _confirmDelete,
+                              onPerformDelete: _performDelete,
                             ),
             ),
           ),
@@ -311,14 +326,16 @@ class _FileList extends StatelessWidget {
     required this.bottomPad,
     required this.onTap,
     required this.onDownload,
-    required this.onDelete,
+    required this.onConfirmDelete,
+    required this.onPerformDelete,
     required this.fmtSize,
   });
   final List<Map<String, dynamic>> items;
   final double bottomPad;
   final void Function(Map<String, dynamic>) onTap;
   final void Function(Map<String, dynamic>) onDownload;
-  final void Function(Map<String, dynamic>) onDelete;
+  final Future<bool> Function(Map<String, dynamic>) onConfirmDelete;
+  final Future<void> Function(Map<String, dynamic>) onPerformDelete;
   final String Function(int) fmtSize;
 
   @override
@@ -328,14 +345,35 @@ class _FileList extends StatelessWidget {
           AppSpacing.lg, 0, AppSpacing.lg, bottomPad),
       itemCount: items.length,
       separatorBuilder: (_, __) => const SizedBox(height: 6),
-      itemBuilder: (_, i) => _FileRow(
-        item: items[i],
-        onTap: () => onTap(items[i]),
-        onDownload: items[i]['is_dir'] == true
-            ? null : () => onDownload(items[i]),
-        onDelete: () => onDelete(items[i]),
-        fmtSize: fmtSize,
-      ),
+      itemBuilder: (_, i) {
+        final item = items[i];
+        // Use the server path as the key so the Dismissible is stable across
+        // refreshes (names can repeat across directories).
+        final rowKey = ValueKey<String>('row:${item['path']}');
+        return Dismissible(
+          key: rowKey,
+          direction: DismissDirection.endToStart,
+          // Require the user to swipe past ~40% before we commit, matching
+          // the feel of iOS Mail/Files.
+          dismissThresholds: const {DismissDirection.endToStart: 0.4},
+          background: const SizedBox.shrink(),
+          secondaryBackground: _SwipeDeleteBg(),
+          confirmDismiss: (_) async {
+            HapticFeedback.mediumImpact();
+            final ok = await onConfirmDelete(item);
+            if (ok) HapticFeedback.heavyImpact();
+            return ok;
+          },
+          onDismissed: (_) => onPerformDelete(item),
+          child: _FileRow(
+            item: item,
+            onTap: () => onTap(item),
+            onDownload: item['is_dir'] == true
+                ? null : () => onDownload(item),
+            fmtSize: fmtSize,
+          ),
+        );
+      },
     );
   }
 }
@@ -344,12 +382,11 @@ class _FileRow extends StatelessWidget {
   const _FileRow({
     required this.item,
     required this.onTap,
-    required this.onDelete,
     this.onDownload,
     required this.fmtSize,
   });
   final Map<String, dynamic> item;
-  final VoidCallback? onTap, onDownload, onDelete;
+  final VoidCallback? onTap, onDownload;
   final String Function(int) fmtSize;
 
   @override
@@ -413,13 +450,7 @@ class _FileRow extends StatelessWidget {
             tooltip: 'Download',
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(minWidth: 32, minHeight: 32)),
-        IconButton(
-          icon: const Icon(Icons.delete_outline,
-            size: 18, color: Bk.textSec),
-          onPressed: onDelete,
-          tooltip: 'Delete',
-          padding: EdgeInsets.zero,
-          constraints: const BoxConstraints(minWidth: 32, minHeight: 32)),
+        // Delete lives on swipe-left now (iOS-native). No trailing button.
       ]),
     );
   }
@@ -509,5 +540,86 @@ class _UploadFab extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+// ── Swipe-to-delete background ────────────────────────────────────────────
+// Shown under a file row as the user swipes it left. Mirrors the native iOS
+// Mail/Files pattern: red pill revealing a trash icon + "Delete" label on
+// the trailing edge.
+
+class _SwipeDeleteBg extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 1),
+      alignment: Alignment.centerRight,
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
+      decoration: BoxDecoration(
+        color: Bk.danger.withOpacity(0.85),
+        borderRadius: BorderRadius.circular(AppRadii.md),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: const [
+        Icon(Icons.delete_outline, size: 20, color: Colors.white),
+        SizedBox(width: 8),
+        Text('Delete',
+          style: TextStyle(
+            color: Colors.white, fontSize: 13,
+            fontWeight: FontWeight.w700, letterSpacing: 0.2)),
+      ]),
+    );
+  }
+}
+
+// ── Empty directory state ─────────────────────────────────────────────────
+// Replaces the bare "Empty directory" text with a centered icon + title +
+// hint so blank directories feel intentional rather than broken.
+
+class _EmptyDir extends StatelessWidget {
+  const _EmptyDir({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(builder: (_, constraints) {
+      // ListView wraps the page so RefreshIndicator still works on an empty
+      // directory (pull-to-refresh needs a scrollable child).
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: EdgeInsets.zero,
+        children: [
+          SizedBox(
+            height: constraints.maxHeight,
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 72, height: 72,
+                    decoration: BoxDecoration(
+                      color: Bk.accent.withOpacity(0.08),
+                      border: Border.all(
+                        color: Bk.accent.withOpacity(0.25)),
+                      borderRadius: BorderRadius.circular(AppRadii.lg),
+                    ),
+                    child: const Icon(
+                      Icons.folder_open_outlined,
+                      size: 34, color: Bk.accent),
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  const Text('Empty directory',
+                    style: TextStyle(
+                      color: Bk.textPri, fontSize: 15,
+                      fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 4),
+                  const Text('Tap Upload to add a file',
+                    style: TextStyle(
+                      color: Bk.textDim, fontSize: 12)),
+                ],
+              ),
+            ),
+          ),
+        ],
+      );
+    });
   }
 }
