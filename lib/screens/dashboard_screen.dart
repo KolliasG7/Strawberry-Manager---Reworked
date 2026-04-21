@@ -336,23 +336,22 @@ class _OverviewTab extends StatelessWidget {
 
     final cp = context.watch<ConnectionProvider>();
 
-    final cards = <Widget>[
-      if (frame!.cpu != null)      CpuCard(cpu: frame!.cpu!, cpuHistory: cp.cpuHistory, showGraph: cp.showCpuGraph),
-      if (frame!.ram != null)      RamCard(ram: frame!.ram!, swap: frame!.swap, ramHistory: cp.ramHistory, showGraph: cp.showRamGraph),
-      if (frame!.fan != null)      ThermalCard(fan: frame!.fan!, tempHistory: cp.tempHistory, fanHistory: cp.fanHistory, showGraph: cp.showThermalGraph),
-      if (frame!.net.isNotEmpty)   NetworkCard(netList: frame!.net),
-      if (frame!.disk.isNotEmpty)  DiskCard(disks: frame!.disk),
-      IntrinsicHeight(child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Expanded(child: UptimeChip(uptime: frame!.uptimeFormatted)),
-          if (frame!.tunnel != null) ...[
-            const SizedBox(width: 12),
-            Expanded(child: _TunnelChip(t: frame!.tunnel!)),
-          ],
+    List<Widget> cards = [];
+    if (frame!.cpu != null) cards.add(CpuCard(cpu: frame!.cpu!, cpuHistory: cp.cpuHistory, showGraph: cp.showCpuGraph));
+    if (frame!.ram != null) cards.add(RamCard(ram: frame!.ram!, swap: frame!.swap, ramHistory: cp.ramHistory, showGraph: cp.showRamGraph));
+    if (frame!.fan != null) cards.add(ThermalCard(fan: frame!.fan!, tempHistory: cp.tempHistory, fanHistory: cp.fanHistory, showGraph: cp.showThermalGraph));
+    if (frame!.net.isNotEmpty) cards.add(NetworkCard(netList: frame!.net));
+    if (frame!.disk.isNotEmpty) cards.add(DiskCard(disks: frame!.disk));
+    cards.add(IntrinsicHeight(child: Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(child: UptimeChip(uptime: frame!.uptimeFormatted)),
+        if (frame!.tunnel != null) ...[
+          const SizedBox(width: 12),
+          Expanded(child: _TunnelChip(t: frame!.tunnel!)),
         ],
-      )),
-    ];
+      ],
+    )));
 
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(14, 6, 14, 120),
