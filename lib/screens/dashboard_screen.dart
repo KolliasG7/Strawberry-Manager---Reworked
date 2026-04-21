@@ -688,31 +688,6 @@ class _TopBar extends StatelessWidget {
   }
 }
 
-class _Chip extends StatelessWidget {
-  const _Chip(this.icon, this.val, this.color);
-  final IconData icon; final String val; final Color color;
-
-  @override
-  Widget build(BuildContext context) => Row(
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      Icon(icon, color: color.withOpacity(0.6), size: 11),
-      const SizedBox(width: 3),
-      AnimatedSwitcher(
-        duration: const Duration(milliseconds: 200),
-        transitionBuilder: (child, anim) =>
-            FadeTransition(opacity: anim, child: child),
-        child: Text(
-          val,
-          key: ValueKey<String>(val),
-          style: TextStyle(
-            color: color, fontSize: 11, fontWeight: FontWeight.w800),
-        ),
-      ),
-    ],
-  );
-}
-
 class _StatusDot extends StatefulWidget {
   const _StatusDot({required this.color, required this.pulse});
   final Color color;
