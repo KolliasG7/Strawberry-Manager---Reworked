@@ -268,7 +268,7 @@ class _TopBar extends StatelessWidget {
         const SizedBox(width: 12),
         GestureDetector(
           onTap: onSettings,
-          child: const Semantics(
+          child: Semantics(
             label: 'Open settings',
             button: true,
             child: Icon(Icons.settings_outlined, color: Bk.textDim, size: 20),
@@ -448,3 +448,4 @@ class _AnimState extends State<_Anim> with SingleTickerProviderStateMixin {
   @override Widget build(BuildContext context) => FadeTransition(
     opacity: _fade, child: SlideTransition(position: _slide, child: widget.child));
 }
+
