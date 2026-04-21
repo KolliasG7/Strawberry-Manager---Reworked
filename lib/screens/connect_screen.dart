@@ -598,7 +598,6 @@ class _ConnectScreenState extends State<ConnectScreen> {
                       color: Bk.textDim.withOpacity(0.5),
                       fontSize: 10, letterSpacing: 1)),
                 ),
-              ]),
             ),
           ),
         ),
