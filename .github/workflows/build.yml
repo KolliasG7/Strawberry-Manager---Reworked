@@ -63,6 +63,38 @@ jobs:
             echo " AppIcon.appiconset found with icons:"
             ls -la ios/Runner/Assets.xcassets/AppIcon.appiconset/
 
+      - name: Setup Git for GitHub API
+        run: |
+          echo " Configuring Git for GitHub API access..."
+          git config --global url."https://github.com/".insteadOf "git@github.com:"
+          git config --global url."https://github.com/".insteadOf "ssh://git@github.com/"
+
+      - name: Setup CocoaPods
+        run: |
+          echo " Setting up CocoaPods with GitHub authentication..."
+          cd ios
+          pod repo update
+          if [ $? -ne 0 ]; then
+            echo " ERROR: CocoaPods repo update failed"
+            exit 1
+          fi
+          echo " CocoaPods setup completed"
+
+      - name: Install CocoaPods dependencies
+        run: |
+          echo " Installing CocoaPods dependencies..."
+          cd ios
+          pod install --repo-update
+          if [ $? -ne 0 ]; then
+            echo " ERROR: CocoaPods install failed, retrying without repo update..."
+            pod install
+            if [ $? -ne 0 ]; then
+              echo " ERROR: CocoaPods install failed completely"
+              exit 1
+            fi
+          fi
+          echo " CocoaPods dependencies installed successfully"
+
       - name: Build iOS (no code signing)
         run: |
           echo " Building iOS app..."
