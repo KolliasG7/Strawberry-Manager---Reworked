@@ -1,4 +1,4 @@
-// lib/providers/connection_provider.dart
+// lib/providers/connection_provider.dart - FIXED WITH ALL IMPORTS
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -85,7 +85,6 @@ class ConnectionProvider extends ChangeNotifier {
       _showNotifications = p.getBool('show_notifications')   ?? true;
       notifyListeners();
     } catch (e) {
-      // Handle SharedPreferences errors gracefully
       debugPrint('[ConnectionProvider] Error loading saved data: $e');
     }
   }
@@ -116,11 +115,6 @@ class ConnectionProvider extends ChangeNotifier {
   }
 
   // ── Connect ──────────────────────────────────────────────────────────
-  // Flow:
-  //   1. Health check (open endpoint — always passes if server is up)
-  //   2. Verify saved token
-  //   3a. Token valid → connect WS, go to dashboard
-  //   3b. Token invalid/missing → set needsAuth, caller shows password dialog
 
   Future<void> connect(String input) async {
     bool authRequired = false;
@@ -136,7 +130,6 @@ class ConnectionProvider extends ChangeNotifier {
     final base = _effectiveBase(_rawInput);
     _api = ApiService(base, token: _token);
 
-    // 1. Health check with timeout
     try {
       final health = await _api!.getHealth().timeout(const Duration(seconds: 10));
       if (health['status'] != 'ok' && health['status'] != 'degraded') {
@@ -156,19 +149,17 @@ class ConnectionProvider extends ChangeNotifier {
       return;
     }
 
-    // 2. Verify token
     final tokenOk = await _api!.verifyToken();
     if (!tokenOk) {
       _connState = ConnState.needsAuth;
       notifyListeners();
-      return; // caller must call login(password) then connectWithToken()
+      return;
     }
 
     await _save();
     _connectWs(base);
   }
 
-  // Called by the password dialog after successful login
   Future<void> login(String password) async {
     if (_api == null) return;
     _error = null;
@@ -198,7 +189,6 @@ class ConnectionProvider extends ChangeNotifier {
 
     _ws = WsService(base, token: _token);
 
-    // FIXED: Use proper enum comparison instead of toString().contains()
     _wsStateSub = _ws!.state.listen((s) {
       if (s == WsState.connected && _connState != ConnState.connected) {
         _connState = ConnState.connected;
@@ -227,7 +217,6 @@ class ConnectionProvider extends ChangeNotifier {
 
     final tunnelUrl = f.tunnel?.url;
     if (tunnelUrl != null && f.tunnel!.isRunning && _isTunnel) {
-      // FIXED: Better null checking and state comparison
       if (_ws != null && _ws!.currentState != WsState.connected) {
         _ws!.updateUrl(tunnelUrl);
       }
@@ -236,8 +225,6 @@ class ConnectionProvider extends ChangeNotifier {
     _sendNotification(f);
     notifyListeners();
   }
-
-  // ── Tunnel ──────────────────────────────────────────────────────────
 
   Future<String> startTunnel() async {
     final result = await _api!.startTunnel().timeout(const Duration(seconds: 35));
@@ -267,8 +254,6 @@ class ConnectionProvider extends ChangeNotifier {
 
   Future<void> stopTunnel() async => _api?.stopTunnel();
 
-  // ── Disconnect ────────────────────────────────────────────────────────
-
   void disconnect() {
     _teardown();
     _connState = ConnState.idle;
@@ -277,7 +262,6 @@ class ConnectionProvider extends ChangeNotifier {
     NotificationService.cancelStatus();
   }
 
-  /// Clear saved token (force re-auth on next connect)
   Future<void> clearToken() async {
     await _saveToken('');
     if (_api != null) _api!.token = '';
@@ -290,8 +274,6 @@ class ConnectionProvider extends ChangeNotifier {
     _ws = null; _wsSub = null; _wsStateSub = null;
   }
 
-  // ── Notification ──────────────────────────────────────────────────────
-
   void _sendNotification(TelemetryFrame f) {
     if (!_showNotifications) return;
     final cpu  = f.cpu?.percent    ?? 0;
@@ -302,7 +284,6 @@ class ConnectionProvider extends ChangeNotifier {
     
     String netStr = '';
     if (net != null) {
-      // FIXED: Safe null-aware network speed calculations
       final txMbps = (net.bytesSentS / 1024 / 1024).toStringAsFixed(1);
       final rxMbps = (net.bytesRecvS / 1024 / 1024).toStringAsFixed(1);
       netStr = '  ▼${rxMbps}M/s ▲${txMbps}M/s';
