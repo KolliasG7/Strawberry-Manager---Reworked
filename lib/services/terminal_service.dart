@@ -1,4 +1,4 @@
-// lib/services/terminal_service.dart
+// lib/services/terminal_service.dart - FIXED (removed debug prints, all imports)
 import 'dart:async';
 import 'dart:convert';
 import 'package:web_socket_channel/web_socket_channel.dart';
@@ -92,14 +92,12 @@ class TerminalService {
     );
   }
 
-  /// Send raw keystrokes/text to the shell
   void sendInput(String text) {
     try { 
       _ch?.sink.add(text); 
     } catch (_) {}
   }
 
-  /// Send terminal resize
   void sendResize(int cols, int rows) {
     final msg = jsonEncode({'type': 'resize', 'cols': cols, 'rows': rows});
     try { 
