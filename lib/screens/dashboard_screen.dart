@@ -4,14 +4,16 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../providers/connection_provider.dart';
 import '../models/telemetry.dart';
+import '../models/process_info.dart';
 import '../services/ws_service.dart';
+import '../services/api_service.dart';
 import '../theme.dart';
 import '../widgets/overview_widgets.dart';
 import '../widgets/fan_control.dart';
 import '../widgets/led_panel.dart';
+import '../widgets/power_controls.dart';
 import 'processes_screen.dart';
 import 'terminal_screen.dart';
-import 'power_screen.dart';
 import 'files_screen.dart';
 import 'settings_screen.dart';
 
@@ -25,7 +27,6 @@ class _DashboardScreenState extends State<DashboardScreen>
   int _tab = 0;
   int _prevTab = 0;
 
-  // Subtle entrance animation
   late AnimationController _entranceCtrl;
   late Animation<double>   _entranceFade;
   late Animation<Offset>   _entranceSlide;
@@ -35,7 +36,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     super.initState();
     _entranceCtrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 420),
+      duration: AppDurations.slow,
     )..forward();
     _entranceFade  = CurvedAnimation(parent: _entranceCtrl, curve: Curves.easeOut);
     _entranceSlide = Tween<Offset>(
@@ -50,15 +51,21 @@ class _DashboardScreenState extends State<DashboardScreen>
     super.dispose();
   }
 
-  Widget _buildTabContent(TelemetryFrame? frame, ConnectionProvider cp) {
+  Widget _tabBody(TelemetryFrame? frame, ConnectionProvider cp) {
     return switch (_tab) {
-      0 => _OverviewTab(frame: frame),
+      0 => _MonitorTab(frame: frame, api: cp.api),
       1 => _ControlTab(frame: frame, api: cp.api),
-      2 => ProcessesScreen(api: cp.api!),
-      3 => const TerminalScreen(),
-      4 => FilesScreen(api: cp.api!),
-      _ => PowerScreen(api: cp.api!),
+      2 => const TerminalScreen(embedded: true),
+      _ => FilesScreen(api: cp.api!, embedded: true),
     };
+  }
+
+  void _openSettings() {
+    HapticFeedback.selectionClick();
+    Navigator.push(
+      context,
+      SlideUpRoute(child: const SettingsScreen()),
+    );
   }
 
   @override
@@ -66,92 +73,82 @@ class _DashboardScreenState extends State<DashboardScreen>
     final cp     = context.watch<ConnectionProvider>();
     final frame  = cp.frame;
     final cpu    = frame?.cpu?.percent ?? 0;
-    final animMs = cp.reduceMotion ? 1 : 260;
+    final reduceMotion = cp.reduceMotion;
 
-    return FadeTransition(
-      opacity: _entranceFade,
-      child: SlideTransition(
-        position: _entranceSlide,
-        child: Scaffold(
-          backgroundColor: const Color(0xFF0A0A0A),
-          extendBody: true,
-          body: CustomScrollView(
-            slivers: [
-              // Modern App Bar
-              SliverAppBar(
-                expandedHeight: 140,
-                floating: false,
-                pinned: true,
-                backgroundColor: const Color(0xFF0A0A0A),
-                surfaceTintColor: Colors.transparent,
-                flexibleSpace: FlexibleSpaceBar(
-                  background: Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          const Color(0xFF1A1A2E),
-                          const Color(0xFF0A0A0A),
-                        ],
-                      ),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 60, 20, 20),
-                      child: _ModernTopBar(
-                        frame: frame,
-                        ws: cp.ws,
-                        onSettings: () {
-                          HapticFeedback.selectionClick();
-                          Navigator.push(context,
-                            _SlideUpRoute(child: const SettingsScreen()));
-                        },
+    return AppBackground(
+      child: FadeTransition(
+        opacity: _entranceFade,
+        child: SlideTransition(
+          position: _entranceSlide,
+          child: Scaffold(
+            backgroundColor: Colors.transparent,
+            extendBody: true,
+            body: SafeArea(
+              bottom: false,
+              child: Column(
+                children: [
+                  _TopBar(
+                    frame: frame,
+                    ws: cp.ws,
+                    onSettings: _openSettings,
+                  ),
+                  Expanded(
+                    child: AnimatedSwitcher(
+                      duration: reduceMotion ? Duration.zero : AppDurations.med,
+                      switchInCurve: Curves.easeOutCubic,
+                      switchOutCurve: Curves.easeInCubic,
+                      transitionBuilder: (child, animation) {
+                        final isForward = _tab >= _prevTab;
+                        final beginX = isForward ? 0.04 : -0.04;
+                        return FadeTransition(
+                          opacity: animation,
+                          child: SlideTransition(
+                            position: Tween<Offset>(
+                              begin: Offset(beginX, 0),
+                              end: Offset.zero,
+                            ).animate(animation),
+                            child: child,
+                          ),
+                        );
+                      },
+                      child: KeyedSubtree(
+                        key: ValueKey<int>(_tab),
+                        child: _tabBody(frame, cp),
                       ),
                     ),
                   ),
-                ),
+                ],
               ),
-              
-              // Content
-              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(20, 20, 20, 120),
-                sliver: SliverFillRemaining(
-                  child: AnimatedSwitcher(
-                    duration: Duration(milliseconds: animMs),
-                    switchInCurve: Curves.easeOutCubic,
-                    switchOutCurve: Curves.easeInCubic,
-                    transitionBuilder: (child, animation) {
-                      final isForward = _tab >= _prevTab;
-                      final beginX = isForward ? 0.04 : -0.04;
-                      return FadeTransition(
-                        opacity: animation,
-                        child: SlideTransition(
-                          position: Tween<Offset>(
-                            begin: Offset(beginX, 0),
-                            end: Offset.zero,
-                          ).animate(animation),
-                          child: child,
-                        ),
-                      );
-                    },
-                    child: KeyedSubtree(
-                      key: ValueKey<int>(_tab),
-                      child: _buildTabContent(frame, cp),
-                    ),
+            ),
+            bottomNavigationBar: SafeArea(
+              top: false,
+              child: GlassBottomNav(
+                reduceMotion: reduceMotion,
+                selectedIndex: _tab,
+                onTap: (i) {
+                  setState(() { _prevTab = _tab; _tab = i; });
+                },
+                destinations: [
+                  NavDestination(
+                    icon: Icons.monitor_heart_outlined,
+                    label: 'Monitor',
+                    badge: cpu > 80,
                   ),
-                ),
+                  const NavDestination(
+                    icon: Icons.tune_outlined,
+                    label: 'Control',
+                  ),
+                  const NavDestination(
+                    icon: Icons.terminal_outlined,
+                    label: 'Shell',
+                  ),
+                  const NavDestination(
+                    icon: Icons.folder_outlined,
+                    label: 'Files',
+                  ),
+                ],
               ),
-            ],
-          ),
-          bottomNavigationBar: _ModernNav(
-            selected: _tab,
-            reduceMotion: cp.reduceMotion,
-            onTap: (i) {
-              if (i == _tab) return;
-              HapticFeedback.selectionClick();
-              setState(() { _prevTab = _tab; _tab = i; });
-            },
-            hasCpuAlert: cpu > 80,
+            ),
           ),
         ),
       ),
@@ -159,15 +156,17 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 }
 
-// ── Slide-up page route ────────────────────────────────────────────────────
+// ── Slide-up page route (shared export) ────────────────────────────────────
 
-class _SlideUpRoute<T> extends PageRouteBuilder<T> {
-  _SlideUpRoute({required Widget child})
+class SlideUpRoute<T> extends PageRouteBuilder<T> {
+  SlideUpRoute({required Widget child})
     : super(
+        opaque: false,
+        barrierColor: Colors.transparent,
         pageBuilder: (_, __, ___) => child,
-        transitionDuration: const Duration(milliseconds: 320),
-        reverseTransitionDuration: const Duration(milliseconds: 280),
-        transitionsBuilder: (_, anim, secAnim, child) {
+        transitionDuration: AppDurations.med,
+        reverseTransitionDuration: AppDurations.fast,
+        transitionsBuilder: (_, anim, __, child) {
           final slide = Tween<Offset>(
             begin: const Offset(0, 0.08),
             end: Offset.zero,
@@ -180,573 +179,149 @@ class _SlideUpRoute<T> extends PageRouteBuilder<T> {
       );
 }
 
-// ── Modern Navigation Bar ─────────────────────────────────────────────────────
-
-class _ModernNav extends StatelessWidget {
-  const _ModernNav({
-    required this.selected,
-    required this.onTap,
-    required this.hasCpuAlert,
-    required this.reduceMotion,
-  });
-  final int selected;
-  final void Function(int) onTap;
-  final bool hasCpuAlert;
-  final bool reduceMotion;
-
-  static const _tabs = [
-    (icon: Icons.monitor_heart_outlined, label: 'Monitor', badge: false),
-    (icon: Icons.tune_outlined,          label: 'Control', badge: false),
-    (icon: Icons.memory_outlined,        label: 'Process', badge: true),
-    (icon: Icons.terminal_outlined,      label: 'Shell',   badge: false),
-    (icon: Icons.folder_outlined,        label: 'Files',   badge: false),
-    (icon: Icons.power_settings_new,     label: 'Power',   badge: false),
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFF1A1A2E),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.3),
-            blurRadius: 20,
-            offset: const Offset(0, -4),
-          ),
-        ],
-      ),
-      child: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: List.generate(_tabs.length, (i) {
-              final tab = _tabs[i];
-              final sel = i == selected;
-              return _ModernNavItem(
-                icon: tab.icon,
-                label: tab.label,
-                badge: tab.badge && hasCpuAlert,
-                selected: sel,
-                reduceMotion: reduceMotion,
-                onTap: () => onTap(i),
-              );
-            }),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ModernNavItem extends StatelessWidget {
-  const _ModernNavItem({
-    required this.icon,
-    required this.label,
-    required this.badge,
-    required this.selected,
-    required this.reduceMotion,
-    required this.onTap,
-  });
-  final IconData icon;
-  final String label;
-  final bool badge, selected, reduceMotion;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final ms = reduceMotion ? 1 : 200;
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: AnimatedContainer(
-        duration: Duration(milliseconds: ms),
-        curve: Curves.easeOutCubic,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        decoration: BoxDecoration(
-          color: selected 
-              ? const Color(0xFF4CAF50)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Stack(
-              children: [
-                Icon(
-                  icon,
-                  color: selected ? Colors.white : Colors.white.withOpacity(0.7),
-                  size: 20,
-                ),
-                if (badge)
-                  Positioned(
-                    right: 0,
-                    top: 0,
-                    child: Container(
-                      width: 6,
-                      height: 6,
-                      decoration: BoxDecoration(
-                        color: Colors.red,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: TextStyle(
-                color: selected ? Colors.white : Colors.white.withOpacity(0.7),
-                fontSize: 10,
-                fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _NavItem extends StatelessWidget {
-  const _NavItem({
-    required this.icon,
-    required this.label,
-    required this.badge,
-    required this.selected,
-    required this.reduceMotion,
-    required this.onTap,
-  });
-  final IconData icon;
-  final String label;
-  final bool badge, selected, reduceMotion;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final ms = reduceMotion ? 1 : 200;
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: AnimatedContainer(
-        duration: Duration(milliseconds: ms),
-        curve: Curves.easeOutCubic,
-        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
-        decoration: selected
-            ? BoxDecoration(
-                color: Bk.white,
-                borderRadius: BorderRadius.circular(18),
-              )
-            : null,
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Badge(
-            isLabelVisible: badge,
-            backgroundColor: selected ? Bk.oled : Bk.white,
-            smallSize: 5,
-            child: AnimatedSwitcher(
-              duration: Duration(milliseconds: reduceMotion ? 1 : 200),
-              switchInCurve: Curves.easeOutBack,
-              switchOutCurve: Curves.easeIn,
-              transitionBuilder: (child, anim) => ScaleTransition(
-                scale: Tween<double>(begin: 0.7, end: 1).animate(anim),
-                child: FadeTransition(opacity: anim, child: child),
-              ),
-              child: Icon(
-                icon,
-                key: ValueKey(selected),
-                color: selected ? Bk.oled : Bk.textDim,
-                size: selected ? 18 : 17,
-              ),
-            ),
-          ),
-          const SizedBox(height: 3),
-          AnimatedDefaultTextStyle(
-            duration: Duration(milliseconds: ms),
-            style: TextStyle(
-              color: selected ? Bk.oled : Bk.textDim,
-              fontSize: 7,
-              fontWeight: selected ? FontWeight.w900 : FontWeight.w500,
-              letterSpacing: 0.8,
-            ),
-            child: Text(label),
-          ),
-        ]),
-      ),
-    );
-  }
-
-}
-
-// ── Modern Top bar ──────────────────────────────────────────────────────────
-
-class _ModernTopBar extends StatelessWidget {
-  const _ModernTopBar({required this.frame, required this.ws, required this.onSettings});
-  final TelemetryFrame? frame;
-  final WsService? ws;
-  final VoidCallback onSettings;
-
-  @override
-  Widget build(BuildContext context) {
-    final temp = frame?.fan?.apuTempC ?? 0;
-    final cpu  = frame?.cpu?.percent  ?? 0;
-    final rpm  = frame?.fan?.rpm      ?? 0;
-    final tempHot = temp >= 88;
-
-    return Row(
-      children: [
-        // App name + uptime
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Strawberry Manager',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 24,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 4),
-              AnimatedSwitcher(
-                duration: const Duration(milliseconds: 400),
-                child: frame != null
-                    ? Text(
-                        key: const ValueKey('uptime'),
-                        'Uptime: ${frame!.uptimeFormatted}',
-                        style: TextStyle(
-                          color: Colors.white.withOpacity(0.7),
-                          fontSize: 12,
-                        ),
-                      )
-                    : Text(
-                        'Connecting...',
-                        key: const ValueKey('connecting'),
-                        style: TextStyle(
-                          color: Colors.white.withOpacity(0.7),
-                          fontSize: 12,
-                        ),
-                      ),
-              ),
-            ],
-          ),
-        ),
-
-        // Live stat chips
-        if (frame != null) ...[
-          _ModernChip(
-            Icons.thermostat_outlined,
-            '${temp.toStringAsFixed(0)}°',
-            tempHot ? Colors.redAccent : const Color(0xFF4CAF50),
-          ),
-          const SizedBox(width: 8),
-          _ModernChip(
-            Icons.memory_outlined,
-            '${cpu.toStringAsFixed(0)}%',
-            cpu > 80 ? Colors.orangeAccent : const Color(0xFF2196F3),
-          ),
-          const SizedBox(width: 8),
-          _ModernChip(
-            Icons.air_outlined,
-            rpm == 0 ? 'idle' : '$rpm',
-            const Color(0xFF9C27B0),
-          ),
-        ],
-
-        const SizedBox(width: 12),
-
-        // WS status dot + Settings
-        Row(
-          children: [
-            StreamBuilder<WsState>(
-              stream: ws?.state,
-              builder: (_, snap) {
-                final s = snap.data ?? WsState.disconnected;
-                return _ModernStatusDot(
-                  color: s == WsState.connected   ? const Color(0xFF4CAF50)
-                       : s == WsState.connecting  ? Colors.orange
-                       : Colors.grey,
-                  pulse: s == WsState.connected,
-                );
-              },
-            ),
-            const SizedBox(width: 12),
-            GestureDetector(
-              onTap: onSettings,
-              child: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(
-                  Icons.settings_outlined,
-                  color: Colors.white,
-                  size: 20,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-}
-
-class _ModernChip extends StatelessWidget {
-  const _ModernChip(this.icon, this.label, this.color);
-  final IconData icon;
-  final String label;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.2),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: color.withOpacity(0.5),
-          width: 1,
-        ),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            icon,
-            color: color,
-            size: 14,
-          ),
-          const SizedBox(width: 6),
-          Text(
-            label,
-            style: TextStyle(
-              color: color,
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ModernStatusDot extends StatefulWidget {
-  const _ModernStatusDot({required this.color, required this.pulse});
-  final Color color;
-  final bool pulse;
-  @override State<_ModernStatusDot> createState() => _ModernStatusDotState();
-}
-
-class _ModernStatusDotState extends State<_ModernStatusDot>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _c;
-  @override
-  void initState() {
-    super.initState();
-    _c = AnimationController(
-      vsync: this, duration: const Duration(milliseconds: 1500))
-      ..repeat(reverse: true);
-  }
-  @override
-  void dispose() { _c.dispose(); super.dispose(); }
-
-  @override
-  Widget build(BuildContext context) => AnimatedBuilder(
-    animation: _c,
-    builder: (_, __) {
-      final opacity = widget.pulse
-          ? 0.6 + _c.value * 0.4
-          : 1.0;
-      return Container(
-        width: 8,
-        height: 8,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: widget.color.withOpacity(opacity),
-          boxShadow: widget.pulse
-              ? [
-                  BoxShadow(
-                      color: widget.color.withOpacity(0.6 * _c.value),
-                      blurRadius: 8, spreadRadius: 2)
-                ]
-              : null,
-        ),
-      );
-    },
-  );
-}
-
-class _Chip extends StatelessWidget {
-  const _Chip(this.icon, this.val, this.color);
-  final IconData icon; final String val; final Color color;
-
-  @override
-  Widget build(BuildContext context) => Row(
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      Icon(icon, color: color.withOpacity(0.6), size: 11),
-      const SizedBox(width: 3),
-      AnimatedSwitcher(
-        duration: const Duration(milliseconds: 200),
-        transitionBuilder: (child, anim) =>
-            FadeTransition(opacity: anim, child: child),
-        child: Text(
-          val,
-          key: ValueKey<String>(val),
-          style: TextStyle(
-            color: color, fontSize: 11, fontWeight: FontWeight.w800),
-        ),
-      ),
-    ],
-  );
-}
-
-// ── Top bar ────────────────────────────────────────────────────────────────
+// ── Top bar (header w/ title, live chips, status, settings) ───────────────
 
 class _TopBar extends StatelessWidget {
-  const _TopBar({required this.frame, required this.ws, required this.onSettings});
+  const _TopBar({
+    required this.frame,
+    required this.ws,
+    required this.onSettings,
+  });
   final TelemetryFrame? frame;
   final WsService? ws;
   final VoidCallback onSettings;
 
   @override
   Widget build(BuildContext context) {
-    final temp = frame?.fan?.apuTempC ?? 0;
-    final cpu  = frame?.cpu?.percent  ?? 0;
-    final rpm  = frame?.fan?.rpm      ?? 0;
-    final tempHot = temp >= 88;
-
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 10, 14, 10),
-      child: Row(children: [
-        // App name + uptime
-        Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('STRAWBERRY', style: TextStyle(
-            color: Bk.textPri, fontSize: 17,
-            fontWeight: FontWeight.w900, letterSpacing: 2)),
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 400),
-            child: frame != null
-                ? Text(
-                    key: const ValueKey('uptime'),
-                    'MANAGER  ·  ${frame!.uptimeFormatted}',
-                    style: const TextStyle(
-                      color: Bk.textDim, fontSize: 9, letterSpacing: 1.5),
-                  )
-                : const Text(
-                    key: const ValueKey('connecting'),
-                    'MANAGER',
-                    style: TextStyle(
-                      color: Bk.textDim, fontSize: 9, letterSpacing: 1.5),
+      padding: const EdgeInsets.fromLTRB(
+          AppSpacing.xl, AppSpacing.md, AppSpacing.xl, AppSpacing.sm),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Strawberry', style: TextStyle(
+                  color: Bk.textPri, fontSize: 22,
+                  fontWeight: FontWeight.w800, letterSpacing: -0.2,
+                )),
+                const SizedBox(height: 2),
+                AnimatedSwitcher(
+                  duration: AppDurations.med,
+                  child: Text(
+                    frame == null
+                        ? 'Connecting…'
+                        : 'Uptime ${frame!.uptimeFormatted}',
+                    key: ValueKey(frame == null ? 'wait' : 'ok'),
+                    style: const TextStyle(color: Bk.textSec, fontSize: 12),
                   ),
+                ),
+              ],
+            ),
           ),
-        ]),
-        const Spacer(),
-
-        // Live stat chips
-        if (frame != null) ...[
-          _Chip(Icons.thermostat_outlined, '${temp.toStringAsFixed(0)}°',
-              tempHot ? Bk.white : Bk.textSec),
-          const SizedBox(width: 8),
-          _Chip(Icons.memory_outlined, '${cpu.toStringAsFixed(0)}%', Bk.textSec),
-          const SizedBox(width: 8),
-          _Chip(Icons.air_outlined, rpm == 0 ? 'idle' : '$rpm', Bk.textSec),
-          const SizedBox(width: 14),
+          _ConnStatus(ws: ws),
+          const SizedBox(width: AppSpacing.sm),
+          GlassIconButton(
+            icon: Icons.settings_outlined,
+            onPressed: onSettings,
+            size: 40,
+            tooltip: 'Settings',
+          ),
         ],
-
-        // WS status dot
-        StreamBuilder<WsState>(
-          stream: ws?.state,
-          builder: (_, snap) {
-            final s = snap.data ?? WsState.disconnected;
-            return _StatusDot(
-              color: s == WsState.connected   ? Bk.white
-                   : s == WsState.connecting  ? Bk.textSec
-                   : Bk.border,
-              pulse: s == WsState.connected,
-            );
-          },
-        ),
-
-        const SizedBox(width: 12),
-        GestureDetector(
-          onTap: onSettings,
-          child: const Padding(
-            padding: EdgeInsets.all(4),
-            child: Icon(Icons.settings_outlined, color: Bk.textDim, size: 20),
-          ),
-        ),
-      ]),
+      ),
     );
   }
 }
 
-class _StatusDot extends StatefulWidget {
-  const _StatusDot({required this.color, required this.pulse});
-  final Color color;
-  final bool pulse;
-  @override State<_StatusDot> createState() => _StatusDotState();
+class _ConnStatus extends StatelessWidget {
+  const _ConnStatus({required this.ws});
+  final WsService? ws;
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<WsState>(
+      stream: ws?.state,
+      builder: (_, snap) {
+        final s = snap.data ?? WsState.disconnected;
+        final (color, label) = switch (s) {
+          WsState.connected    => (Bk.success,  'LIVE'),
+          WsState.connecting   => (Bk.warn,     'CONNECTING'),
+          WsState.disconnected => (Bk.textDim,  'OFFLINE'),
+        };
+        return GlassPill(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            _Dot(color: color, pulse: s == WsState.connected),
+            const SizedBox(width: 6),
+            Text(label, style: TextStyle(
+              color: color, fontSize: 10,
+              fontWeight: FontWeight.w700, letterSpacing: 1.2,
+            )),
+          ]),
+        );
+      },
+    );
+  }
 }
 
-class _StatusDotState extends State<_StatusDot>
-    with SingleTickerProviderStateMixin {
+class _Dot extends StatefulWidget {
+  const _Dot({required this.color, required this.pulse});
+  final Color color;
+  final bool pulse;
+  @override State<_Dot> createState() => _DotState();
+}
+
+class _DotState extends State<_Dot> with SingleTickerProviderStateMixin {
   late AnimationController _c;
   @override
   void initState() {
     super.initState();
     _c = AnimationController(
-      vsync: this, duration: const Duration(milliseconds: 1000))
-      ..repeat(reverse: true);
+      vsync: this, duration: const Duration(milliseconds: 1200),
+    )..repeat(reverse: true);
   }
-  @override
-  void dispose() { _c.dispose(); super.dispose(); }
+  @override void dispose() { _c.dispose(); super.dispose(); }
 
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: _c,
     builder: (_, __) {
-      final opacity = widget.pulse
-          ? 0.45 + _c.value * 0.55
-          : 1.0;
+      final opacity = widget.pulse ? 0.55 + _c.value * 0.45 : 1.0;
       return Container(
         width: 7, height: 7,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           color: widget.color.withOpacity(opacity),
-          boxShadow: widget.pulse
-              ? [BoxShadow(
-                  color: widget.color.withOpacity(0.4 * _c.value),
-                  blurRadius: 6, spreadRadius: 1)]
-              : null,
+          boxShadow: widget.pulse ? [
+            BoxShadow(
+              color: widget.color.withOpacity(0.6 * _c.value),
+              blurRadius: 6, spreadRadius: 1),
+          ] : null,
         ),
       );
     },
   );
 }
 
-// ── Overview tab ───────────────────────────────────────────────────────────
+// ── Monitor tab (Overview) ─────────────────────────────────────────────────
 
-class _OverviewTab extends StatelessWidget {
-  const _OverviewTab({required this.frame});
+class _MonitorTab extends StatelessWidget {
+  const _MonitorTab({required this.frame, required this.api});
   final TelemetryFrame? frame;
+  final ApiService? api;
 
   @override
   Widget build(BuildContext context) {
     if (frame == null) return const _Wait();
-    if (frame!.isError) return Center(child: Padding(
-      padding: const EdgeInsets.all(24),
-      child: GlassCard(child: Text(frame!.error!,
-        style: const TextStyle(color: Bk.textSec, fontSize: 12)))));
+    if (frame!.isError) {
+      return Padding(
+        padding: const EdgeInsets.all(AppSpacing.xl),
+        child: _ErrorCard(message: frame!.error!),
+      );
+    }
 
     final cp = context.watch<ConnectionProvider>();
-
     final cards = <Widget>[
       if (frame!.cpu != null)
         CpuCard(cpu: frame!.cpu!, cpuHistory: cp.cpuHistory, showGraph: cp.showCpuGraph),
@@ -756,26 +331,27 @@ class _OverviewTab extends StatelessWidget {
         ThermalCard(fan: frame!.fan!, tempHistory: cp.tempHistory, fanHistory: cp.fanHistory, showGraph: cp.showThermalGraph),
       if (frame!.net.isNotEmpty) NetworkCard(netList: frame!.net),
       if (frame!.disk.isNotEmpty) DiskCard(disks: frame!.disk),
+      if (api != null) TopProcessesCard(api: api!),
       IntrinsicHeight(child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Expanded(child: UptimeChip(uptime: frame!.uptimeFormatted)),
           if (frame!.tunnel != null) ...[
-            const SizedBox(width: 10),
+            const SizedBox(width: AppSpacing.md),
             Expanded(child: _TunnelChip(t: frame!.tunnel!)),
           ],
         ],
       )),
     ];
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(14, 6, 14, 120),
-      child: Column(
-        children: List.generate(cards.length * 2 - 1, (index) {
-          if (index.isOdd) return const SizedBox(height: 10);
-          final i = index ~/ 2;
-          return _Anim(delay: Duration(milliseconds: 50 * i), child: cards[i]);
-        }),
+    return ListView.separated(
+      padding: const EdgeInsets.fromLTRB(
+          AppSpacing.lg, AppSpacing.sm, AppSpacing.lg, 120),
+      itemCount: cards.length,
+      separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.md),
+      itemBuilder: (_, i) => _StaggerIn(
+        delay: Duration(milliseconds: 40 * i),
+        child: cards[i],
       ),
     );
   }
@@ -786,79 +362,238 @@ class _TunnelChip extends StatelessWidget {
   final TunnelStatus t;
   @override
   Widget build(BuildContext context) => GlassCard(
-    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+    padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.lg, vertical: AppSpacing.md),
     child: Row(children: [
-      Icon(t.isRunning ? Icons.cloud_done_outlined : Icons.cloud_off_outlined,
-        color: Bk.white, size: 14),
-      const SizedBox(width: 8),
+      Icon(
+        t.isRunning ? Icons.cloud_done_outlined : Icons.cloud_off_outlined,
+        color: t.isRunning ? Bk.success : Bk.textDim,
+        size: 16,
+      ),
+      const SizedBox(width: AppSpacing.sm),
       Expanded(child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           StatLabel(t.isRunning ? 'TUNNEL ON' : 'TUNNEL OFF'),
-          if (t.url != null)
+          if (t.url != null) ...[
+            const SizedBox(height: 2),
             Text(t.url!.replaceAll('https://', ''),
-              style: const TextStyle(color: Bk.textSec, fontSize: 9),
+              style: const TextStyle(color: Bk.textSec, fontSize: 10),
               overflow: TextOverflow.ellipsis),
+          ],
         ])),
     ]),
   );
 }
 
+// ── Control tab (Power + Fan + LED) ────────────────────────────────────────
+
 class _ControlTab extends StatelessWidget {
   const _ControlTab({required this.frame, required this.api});
   final TelemetryFrame? frame;
-  final dynamic api;
+  final ApiService? api;
 
   @override
   Widget build(BuildContext context) {
     if (api == null) return const _Wait();
     final cards = <Widget>[
+      PowerControlsCard(api: api!),
       if (frame?.fan != null)
-        FanControlCard(api: api, currentThreshold: frame!.fan!.thresholdC),
-      LedPanelCard(api: api),
+        FanControlCard(api: api!, currentThreshold: frame!.fan!.thresholdC),
+      LedPanelCard(api: api!),
     ];
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(14, 6, 14, 120),
-      child: Column(
-        children: List.generate(cards.length * 2 - 1, (index) {
-          if (index.isOdd) return const SizedBox(height: 10);
-          final i = index ~/ 2;
-          return _Anim(delay: Duration(milliseconds: 50 * i), child: cards[i]);
-        }),
+    return ListView.separated(
+      padding: const EdgeInsets.fromLTRB(
+          AppSpacing.lg, AppSpacing.sm, AppSpacing.lg, 120),
+      itemCount: cards.length,
+      separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.md),
+      itemBuilder: (_, i) => _StaggerIn(
+        delay: Duration(milliseconds: 40 * i),
+        child: cards[i],
       ),
     );
   }
 }
 
-// ── Waiting spinner ────────────────────────────────────────────────────────
+// ── Top Processes card (monitor drill-in) ──────────────────────────────────
+
+class TopProcessesCard extends StatefulWidget {
+  const TopProcessesCard({super.key, required this.api});
+  final ApiService api;
+  @override State<TopProcessesCard> createState() => _TopProcessesCardState();
+}
+
+class _TopProcessesCardState extends State<TopProcessesCard> {
+  List<ProcessInfo> _procs = const [];
+  bool _loading = true;
+  String? _err;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final p = await widget.api.getProcesses(limit: 5, sortBy: 'cpu');
+      if (!mounted) return;
+      setState(() { _procs = p; _loading = false; _err = null; });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() { _err = e.toString(); _loading = false; });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GlassCard(
+      padding: const EdgeInsets.fromLTRB(
+          AppSpacing.lg, AppSpacing.lg, AppSpacing.sm, AppSpacing.sm),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(right: AppSpacing.md),
+            child: Row(children: [
+              const StatLabel('TOP PROCESSES'),
+              const Spacer(),
+              TextButton(
+                onPressed: () {
+                  HapticFeedback.selectionClick();
+                  Navigator.push(context,
+                    SlideUpRoute(child: ProcessesScreen(api: widget.api)));
+                },
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.md, vertical: 4),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  foregroundColor: Bk.accent,
+                ),
+                child: const Text('SEE ALL',
+                  style: TextStyle(
+                    fontSize: 10, fontWeight: FontWeight.w700,
+                    letterSpacing: 1.5)),
+              ),
+            ]),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          if (_loading)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: AppSpacing.lg),
+              child: Center(
+                child: SizedBox(
+                  width: 18, height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2, color: Bk.accent)),
+              ),
+            )
+          else if (_err != null)
+            Padding(
+              padding: const EdgeInsets.only(
+                  right: AppSpacing.md, bottom: AppSpacing.sm),
+              child: Text(_err!, style: const TextStyle(
+                color: Bk.danger, fontSize: 11)),
+            )
+          else
+            ...List.generate(_procs.length, (i) => Padding(
+              padding: const EdgeInsets.only(right: AppSpacing.sm),
+              child: _TopProcRow(p: _procs[i]),
+            )),
+        ],
+      ),
+    );
+  }
+}
+
+class _TopProcRow extends StatelessWidget {
+  const _TopProcRow({required this.p});
+  final ProcessInfo p;
+
+  @override
+  Widget build(BuildContext context) {
+    final cpuColor = p.cpuPct > 50 ? Bk.warn
+                   : p.cpuPct > 20 ? Bk.accent : Bk.textSec;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 7),
+      child: Row(children: [
+        SizedBox(
+          width: 48,
+          child: Text('${p.pid}', style: const TextStyle(
+            color: Bk.textDim, fontSize: 11, fontFamily: 'monospace')),
+        ),
+        Expanded(
+          child: Text(p.name, style: const TextStyle(
+            color: Bk.textPri, fontSize: 13, fontWeight: FontWeight.w600),
+            overflow: TextOverflow.ellipsis, maxLines: 1),
+        ),
+        SizedBox(
+          width: 52,
+          child: Text(
+            p.cpuPct > 0 ? '${p.cpuPct.toStringAsFixed(1)}%' : '—',
+            style: TextStyle(
+              color: cpuColor, fontSize: 12,
+              fontWeight: FontWeight.w700, fontFamily: 'monospace'),
+            textAlign: TextAlign.right),
+        ),
+        SizedBox(
+          width: 54,
+          child: Text('${p.memRssMb.toStringAsFixed(0)}M',
+            style: const TextStyle(
+              color: Bk.textSec, fontSize: 12, fontFamily: 'monospace'),
+            textAlign: TextAlign.right),
+        ),
+      ]),
+    );
+  }
+}
+
+// ── Placeholders ───────────────────────────────────────────────────────────
 
 class _Wait extends StatelessWidget {
   const _Wait();
   @override
   Widget build(BuildContext context) => Center(
-    child: Column(mainAxisSize: MainAxisSize.min, children: [
-      const SizedBox(
+    child: Column(mainAxisSize: MainAxisSize.min, children: const [
+      SizedBox(
         width: 24, height: 24,
         child: CircularProgressIndicator(
-          color: Bk.white, strokeWidth: 1.5)),
-      const SizedBox(height: 16),
-      const Text('AWAITING TELEMETRY', style: TextStyle(
-        color: Bk.textDim, fontSize: 9, letterSpacing: 3)),
+          color: Bk.accent, strokeWidth: 2)),
+      SizedBox(height: AppSpacing.lg),
+      Text('AWAITING TELEMETRY', style: TextStyle(
+        color: Bk.textDim, fontSize: 10, letterSpacing: 2.5)),
     ]),
   );
 }
 
-// ── Staggered card animation ───────────────────────────────────────────────
-
-class _Anim extends StatefulWidget {
-  const _Anim({required this.child, required this.delay});
-  final Widget child;
-  final Duration delay;
-  @override State<_Anim> createState() => _AnimState();
+class _ErrorCard extends StatelessWidget {
+  const _ErrorCard({required this.message});
+  final String message;
+  @override
+  Widget build(BuildContext context) => GlassCard(
+    tint: Bk.danger.withOpacity(0.18),
+    child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const Icon(Icons.error_outline, color: Bk.danger, size: 18),
+      const SizedBox(width: AppSpacing.md),
+      Expanded(child: Text(message, style: const TextStyle(
+        color: Bk.textSec, fontSize: 12, height: 1.4))),
+    ]),
+  );
 }
 
-class _AnimState extends State<_Anim> with SingleTickerProviderStateMixin {
+// ── Staggered card entrance ────────────────────────────────────────────────
+
+class _StaggerIn extends StatefulWidget {
+  const _StaggerIn({required this.child, required this.delay});
+  final Widget child;
+  final Duration delay;
+  @override State<_StaggerIn> createState() => _StaggerInState();
+}
+
+class _StaggerInState extends State<_StaggerIn>
+    with SingleTickerProviderStateMixin {
   late AnimationController _c;
   late Animation<double>   _fade;
   late Animation<Offset>   _slide;
@@ -866,9 +601,10 @@ class _AnimState extends State<_Anim> with SingleTickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-    _c     = AnimationController(vsync: this, duration: const Duration(milliseconds: 400));
+    _c = AnimationController(
+        vsync: this, duration: AppDurations.slow);
     _fade  = CurvedAnimation(parent: _c, curve: Curves.easeOut);
-    _slide = Tween<Offset>(begin: const Offset(0, 0.06), end: Offset.zero)
+    _slide = Tween<Offset>(begin: const Offset(0, 0.05), end: Offset.zero)
         .animate(CurvedAnimation(parent: _c, curve: Curves.easeOutCubic));
     Future.delayed(widget.delay, () { if (mounted) _c.forward(); });
   }
@@ -877,7 +613,8 @@ class _AnimState extends State<_Anim> with SingleTickerProviderStateMixin {
   void dispose() { _c.dispose(); super.dispose(); }
 
   @override
-  Widget build(BuildContext context) =>
-      FadeTransition(opacity: _fade,
-          child: SlideTransition(position: _slide, child: widget.child));
+  Widget build(BuildContext context) => FadeTransition(
+    opacity: _fade,
+    child: SlideTransition(position: _slide, child: widget.child),
+  );
 }

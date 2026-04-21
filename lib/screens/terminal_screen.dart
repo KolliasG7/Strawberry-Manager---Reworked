@@ -8,21 +8,24 @@ import '../services/terminal_service.dart';
 import '../theme.dart';
 
 class TerminalScreen extends StatefulWidget {
-  const TerminalScreen({super.key});
+  const TerminalScreen({super.key, this.embedded = false});
+
+  /// When true, no Scaffold/background is rendered — the screen assumes it
+  /// is stacked inside the DashboardScreen shell.
+  final bool embedded;
+
   @override State<TerminalScreen> createState() => _TerminalScreenState();
 }
 
-class _TerminalScreenState extends State<TerminalScreen> with WidgetsBindingObserver {
+class _TerminalScreenState extends State<TerminalScreen>
+    with WidgetsBindingObserver {
   late TerminalService _term;
   final _inputCtrl  = TextEditingController();
   final _scrollCtrl = ScrollController();
-  final _buffer     = StringBuffer();
   final _lines      = <String>[];
   StreamSubscription? _outSub;
   StreamSubscription? _stateSub;
-  bool _connected   = false;
-
-  // Pending partial line
+  bool _connected = false;
   String _partial = '';
 
   @override
@@ -39,24 +42,20 @@ class _TerminalScreenState extends State<TerminalScreen> with WidgetsBindingObse
   }
 
   void _onOutput(String text) {
-    // Strip ANSI escape codes for simple rendering
-    final clean = text.replaceAll(RegExp(r'\x1B\][^\x07]*\x07'), '')
-                       .replaceAll(RegExp(r'\x1B\][^\x1B]*\x1B\\'), '')
-                       .replaceAll(RegExp(r'\x1B\[[0-9;?]*[ -/]*[@-~]'), '')
-                       .replaceAll('\r\n', '\n')
-                       .replaceAll('\r', '\n');
+    final clean = text
+        .replaceAll(RegExp(r'\x1B\][^\x07]*\x07'), '')
+        .replaceAll(RegExp(r'\x1B\][^\x1B]*\x1B\\'), '')
+        .replaceAll(RegExp(r'\x1B\[[0-9;?]*[ -/]*[@-~]'), '')
+        .replaceAll('\r\n', '\n')
+        .replaceAll('\r', '\n');
 
     setState(() {
       _partial += clean;
-      // Split on newlines, keep partial last line
       final parts = _partial.split('\n');
       _partial = parts.last;
       for (int i = 0; i < parts.length - 1; i++) {
-        if (parts[i].isNotEmpty || _lines.isNotEmpty) {
-          _lines.add(parts[i]);
-        }
+        if (parts[i].isNotEmpty || _lines.isNotEmpty) _lines.add(parts[i]);
       }
-      // Cap buffer
       if (_lines.length > 1000) _lines.removeRange(0, _lines.length - 1000);
     });
 
@@ -65,7 +64,8 @@ class _TerminalScreenState extends State<TerminalScreen> with WidgetsBindingObse
         _scrollCtrl.animateTo(
           _scrollCtrl.position.maxScrollExtent,
           duration: const Duration(milliseconds: 80),
-          curve: Curves.easeOut);
+          curve: Curves.easeOut,
+        );
       }
     });
   }
@@ -79,121 +79,57 @@ class _TerminalScreenState extends State<TerminalScreen> with WidgetsBindingObse
     _inputCtrl.clear();
   }
 
-  void _sendCtrl(String key) {
-    // Ctrl+C = 0x03, Ctrl+D = 0x04, Ctrl+L = 0x0C, Tab = 0x09
-    final map = {'C': '\x03', 'D': '\x04', 'L': '\x0C', 'Z': '\x1A'};
-    final s = map[key];
-    if (s != null) _term.sendInput(s);
+  void _clear() {
+    HapticFeedback.selectionClick();
+    setState(() { _lines.clear(); _partial = ''; });
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Bk.oled,
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-        title: Row(children: [
-          const Text('SHELL'),
-          const SizedBox(width: 10),
-          Container(
-            width: 7, height: 7,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: _connected ? Bk.white : Bk.textDim,
-            ),
-          ),
-          const SizedBox(width: 6),
-          Text(_connected ? 'LIVE' : 'CONNECTING…',
-            style: TextStyle(
-              color: _connected ? Bk.textSec : Bk.textDim,
-              fontSize: 9, letterSpacing: 2)),
-        ]),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.cleaning_services_outlined, size: 16),
-            onPressed: () => setState(() { _lines.clear(); _partial = ''; }),
-            tooltip: 'Clear terminal'),
-        ],
+    final body = Column(children: [
+      _Header(
+        connected: _connected,
+        onClear: _clear,
+        embedded: widget.embedded,
       ),
-      body: Column(children: [
-
-        // Terminal output
-        Expanded(
-          child: Container(
-            margin: const EdgeInsets.symmetric(horizontal: 10),
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: const Color(0xFF020305),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: Bk.border),
-            ),
+      Expanded(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(
+              AppSpacing.lg, 0, AppSpacing.lg, AppSpacing.sm),
+          child: GlassCard(
+            padding: const EdgeInsets.all(AppSpacing.md),
             child: ListView.builder(
               controller: _scrollCtrl,
               itemCount: _lines.length + (_partial.isNotEmpty ? 1 : 0),
               itemBuilder: (_, i) {
                 final text = i < _lines.length ? _lines[i] : _partial;
-                return Text(
-                  text,
-                  style: const TextStyle(
-                    color: Color(0xFFE0E0E0),
-                    fontSize: 12,
-                    fontFamily: 'monospace',
-                    height: 1.4,
-                  ),
-                );
+                return Text(text, style: T.mono);
               },
             ),
           ),
         ),
-
-        const SizedBox(height: 6),
-
-        // Input row
-        Padding(
-          padding: EdgeInsets.fromLTRB(10, 0, 10,
-            MediaQuery.of(context).viewInsets.bottom + 110),
-          child: Row(children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-              decoration: BoxDecoration(
-                color: Bk.surface1,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Bk.border),
-              ),
-              child: const Text(r'$',
-                style: TextStyle(
-                  color: Bk.white, fontSize: 14,
-                  fontFamily: 'monospace', fontWeight: FontWeight.w900)),
-            ),
-            const SizedBox(width: 8),
-            Expanded(child: TextField(
-              controller: _inputCtrl,
-              enabled: _connected,
-              style: const TextStyle(
-                color: Bk.textPri, fontFamily: 'monospace', fontSize: 13),
-              decoration: const InputDecoration(
-                border: InputBorder.none,
-                hintText: 'command…',
-                hintStyle: TextStyle(color: Bk.textDim, fontSize: 12),
-                isDense: true,
-              ),
-              onSubmitted: _sendLine,
-              textInputAction: TextInputAction.send,
-            )),
-            Semantics(
-              label: 'Send command',
-              button: true,
-              child: GestureDetector(
-                onTap: () => _sendLine(_inputCtrl.text),
-                child: Container(
-                  padding: const EdgeInsets.all(8),
-                  child: Icon(Icons.send_rounded,
-                    color: _connected ? Bk.white : Bk.textDim, size: 18)),
-              ),
-            ),
-          ]),
+      ),
+      Padding(
+        padding: EdgeInsets.fromLTRB(
+          AppSpacing.lg, 0, AppSpacing.lg,
+          widget.embedded
+              ? MediaQuery.of(context).viewInsets.bottom + 100
+              : MediaQuery.of(context).viewInsets.bottom + AppSpacing.md,
         ),
-      ]),
+        child: _InputRow(
+          controller: _inputCtrl,
+          connected: _connected,
+          onSubmit: _sendLine,
+        ),
+      ),
+    ]);
+
+    if (widget.embedded) return body;
+    return AppBackground(
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        body: SafeArea(child: body),
+      ),
     );
   }
 
@@ -215,5 +151,110 @@ class _TerminalScreenState extends State<TerminalScreen> with WidgetsBindingObse
     _inputCtrl.dispose();
     _scrollCtrl.dispose();
     super.dispose();
+  }
+}
+
+class _Header extends StatelessWidget {
+  const _Header({
+    required this.connected,
+    required this.onClear,
+    required this.embedded,
+  });
+  final bool connected;
+  final VoidCallback onClear;
+  final bool embedded;
+
+  @override
+  Widget build(BuildContext context) {
+    final (color, label) = connected
+        ? (Bk.success, 'LIVE')
+        : (Bk.warn, 'CONNECTING');
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+          AppSpacing.xl, AppSpacing.md, AppSpacing.xl, AppSpacing.md),
+      child: Row(children: [
+        if (!embedded) ...[
+          GlassIconButton(
+            icon: Icons.arrow_back_ios_new,
+            onPressed: () => Navigator.of(context).maybePop(),
+          ),
+          const SizedBox(width: AppSpacing.md),
+        ],
+        const Text('Shell', style: TextStyle(
+          color: Bk.textPri, fontSize: 22,
+          fontWeight: FontWeight.w800, letterSpacing: -0.2)),
+        const SizedBox(width: AppSpacing.md),
+        GlassPill(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Container(
+              width: 6, height: 6,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle, color: color),
+            ),
+            const SizedBox(width: 5),
+            Text(label, style: TextStyle(
+              color: color, fontSize: 9,
+              fontWeight: FontWeight.w700, letterSpacing: 1.2)),
+          ]),
+        ),
+        const Spacer(),
+        GlassIconButton(
+          icon: Icons.cleaning_services_outlined,
+          onPressed: onClear,
+          tooltip: 'Clear terminal',
+        ),
+      ]),
+    );
+  }
+}
+
+class _InputRow extends StatelessWidget {
+  const _InputRow({
+    required this.controller,
+    required this.connected,
+    required this.onSubmit,
+  });
+  final TextEditingController controller;
+  final bool connected;
+  final ValueChanged<String> onSubmit;
+
+  @override
+  Widget build(BuildContext context) {
+    return GlassCard(
+      padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.md, vertical: 6),
+      radius: AppRadii.pill,
+      child: Row(children: [
+        const Text(r'$', style: TextStyle(
+          color: Bk.accent, fontSize: 14,
+          fontFamily: 'monospace', fontWeight: FontWeight.w900)),
+        const SizedBox(width: AppSpacing.sm),
+        Expanded(child: TextField(
+          controller: controller,
+          enabled: connected,
+          style: const TextStyle(
+            color: Bk.textPri, fontFamily: 'monospace', fontSize: 13),
+          cursorColor: Bk.accent,
+          decoration: const InputDecoration(
+            border: InputBorder.none,
+            hintText: 'command…',
+            hintStyle: TextStyle(color: Bk.textDim, fontSize: 12),
+            isDense: true,
+          ),
+          onSubmitted: onSubmit,
+          textInputAction: TextInputAction.send,
+        )),
+        Semantics(
+          label: 'Send command',
+          button: true,
+          child: IconButton(
+            onPressed: connected ? () => onSubmit(controller.text) : null,
+            icon: Icon(Icons.send_rounded,
+              color: connected ? Bk.accent : Bk.textDim, size: 18),
+          ),
+        ),
+      ]),
+    );
   }
 }
