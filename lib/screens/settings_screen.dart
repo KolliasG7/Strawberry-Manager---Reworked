@@ -166,155 +166,539 @@ class _SettingsScreenState extends State<SettingsScreen>
     final cp = context.watch<ConnectionProvider>();
 
     return Scaffold(
-      backgroundColor: Bk.oled,
-      appBar: AppBar(
-        backgroundColor: Bk.oled,
-        surfaceTintColor: Colors.transparent,
-        leading: GestureDetector(
-          onTap: () {
-            HapticFeedback.selectionClick();
-            Navigator.of(context).pop();
-          },
-          child: const Icon(Icons.arrow_back_ios_new, color: Bk.textDim, size: 18),
-        ),
-        title: const Text('SETTINGS', style: TextStyle(
-          color: Bk.textPri, fontSize: 13,
-          fontWeight: FontWeight.w900, letterSpacing: 2.5,
-        )),
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(1),
-          child: Container(height: 1, color: Bk.border),
-        ),
-      ),
-      body: FadeTransition(
-        opacity: _fadeAnim,
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 20, 16, 48),
-          children: [
-
-            // ── Display preferences ─────────────────────────────────
-            _SectionHeader('DISPLAY'),
-            const SizedBox(height: 8),
-            _ToggleGroup(children: [
-              _ToggleTile(label: 'CPU Graph',           value: cp.showCpuGraph,      onChanged: cp.toggleCpuGraph),
-              _ToggleTile(label: 'RAM Graph',           value: cp.showRamGraph,      onChanged: cp.toggleRamGraph),
-              _ToggleTile(label: 'Thermal Graph',       value: cp.showThermalGraph,  onChanged: cp.toggleThermalGraph),
-              _ToggleTile(label: 'Status Notifications',value: cp.showNotifications, onChanged: cp.toggleNotifications),
-              _ToggleTile(label: 'Reduce Motion',       value: cp.reduceMotion,      onChanged: cp.toggleReduceMotion, last: true),
-            ]),
-
-            const SizedBox(height: 28),
-
-            // ── Payload injection ────────────────────────────────────
-            Row(children: [
-              const Expanded(child: _SectionHeader('PAYLOAD INJECTION')),
-              _CollapseButton(
-                expanded: _showPayloadSection,
-                onTap: () {
-                  HapticFeedback.selectionClick();
-                  setState(() => _showPayloadSection = !_showPayloadSection);
-                },
+      backgroundColor: const Color(0xFF0A0A0A),
+      body: CustomScrollView(
+        slivers: [
+          // Modern App Bar
+          SliverAppBar(
+            expandedHeight: 120,
+            floating: false,
+            pinned: true,
+            backgroundColor: const Color(0xFF0A0A0A),
+            surfaceTintColor: Colors.transparent,
+            leading: Container(
+              margin: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
               ),
-            ]),
-            const SizedBox(height: 8),
-            _AnimatedSection(
-              visible: _showPayloadSection,
-              child: Column(children: [
-                Row(children: [
-                  Expanded(
-                    flex: 3,
-                    child: _InputField(controller: _ipCtrl, hint: 'Target IP',
-                      keyboard: TextInputType.number,
-                      formatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))]),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    flex: 1,
-                    child: _InputField(controller: _portCtrl, hint: 'Port',
-                      keyboard: TextInputType.number,
-                      formatters: [FilteringTextInputFormatter.digitsOnly]),
-                  ),
-                ]),
-                const SizedBox(height: 8),
-                _FilePicker(
-                  file: _selectedFile,
-                  onTap: _pickFile,
-                ),
-                const SizedBox(height: 10),
-                _ActionButton(
-                  label: 'SEND PAYLOAD',
-                  loading: _sending,
-                  onTap: _sending ? null : _sendPayload,
-                  style: _ActionStyle.primary,
-                ),
-              ]),
+              child: IconButton(
+                onPressed: () {
+                  HapticFeedback.selectionClick();
+                  Navigator.of(context).pop();
+                },
+                icon: const Icon(Icons.arrow_back_ios_new, 
+                  color: Colors.white, size: 18),
+              ),
             ),
+            flexibleSpace: FlexibleSpaceBar(
+              title: const Text('Settings', style: TextStyle(
+                color: Colors.white, fontSize: 24,
+                fontWeight: FontWeight.w700,
+              )),
+              titlePadding: const EdgeInsets.only(left: 76, bottom: 16),
+              background: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      const Color(0xFF1A1A2E),
+                      const Color(0xFF0A0A0A),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          
+          // Content
+          SliverPadding(
+            padding: const EdgeInsets.all(20),
+            sliver: SliverList(
+              delegate: SliverChildListDelegate([
+                // Display Preferences Card
+                _ModernCard(
+                  title: 'Display Preferences',
+                  icon: Icons.visibility_outlined,
+                  child: Column(
+                    children: [
+                      _ModernToggleTile(
+                        label: 'CPU Graph',
+                        subtitle: 'Show CPU usage graph',
+                        value: cp.showCpuGraph,
+                        onChanged: cp.toggleCpuGraph,
+                      ),
+                      _ModernToggleTile(
+                        label: 'RAM Graph',
+                        subtitle: 'Show memory usage graph',
+                        value: cp.showRamGraph,
+                        onChanged: cp.toggleRamGraph,
+                      ),
+                      _ModernToggleTile(
+                        label: 'Thermal Graph',
+                        subtitle: 'Show temperature monitoring',
+                        value: cp.showThermalGraph,
+                        onChanged: cp.toggleThermalGraph,
+                      ),
+                      _ModernToggleTile(
+                        label: 'Status Notifications',
+                        subtitle: 'Enable system notifications',
+                        value: cp.showNotifications,
+                        onChanged: cp.toggleNotifications,
+                      ),
+                      _ModernToggleTile(
+                        label: 'Reduce Motion',
+                        subtitle: 'Minimize animations',
+                        value: cp.reduceMotion,
+                        onChanged: cp.toggleReduceMotion,
+                        isLast: true,
+                      ),
+                    ],
+                  ),
+                ),
 
-            // ── History ──────────────────────────────────────────────
-            if (_history.isNotEmpty) ...[
-              const SizedBox(height: 28),
-              Row(children: [
-                const Expanded(child: _SectionHeader('HISTORY')),
-                _CollapseButton(
-                  expanded: _showHistorySection,
-                  onTap: () {
-                    HapticFeedback.selectionClick();
-                    setState(() => _showHistorySection = !_showHistorySection);
-                  },
-                ),
-                const SizedBox(width: 12),
-                GestureDetector(
-                  onTap: () async {
-                    HapticFeedback.selectionClick();
-                    await PayloadHistoryService.clear();
-                    _loadPayloadHistory();
-                  },
-                  child: const Text('CLEAR', style: TextStyle(
-                    color: Bk.textDim, fontSize: 9, letterSpacing: 1.5)),
-                ),
-              ]),
-              const SizedBox(height: 8),
-              _AnimatedSection(
-                visible: _showHistorySection,
-                child: Column(
-                  children: _history.map((r) => _HistoryTile(
-                    record: r,
+                const SizedBox(height: 24),
+
+                // Payload Injection Card
+                _ModernCard(
+                  title: 'Payload Injection',
+                  icon: Icons.send_outlined,
+                  action: _ModernExpandButton(
+                    expanded: _showPayloadSection,
                     onTap: () {
                       HapticFeedback.selectionClick();
-                      _ipCtrl.text   = r.ip;
-                      _portCtrl.text = r.port.toString();
-                      setState(() => _selectedFile =
-                          File(r.filePath).existsSync() ? File(r.filePath) : null);
+                      setState(() => _showPayloadSection = !_showPayloadSection);
                     },
-                  )).toList(),
+                  ),
+                  child: _ModernAnimatedSection(
+                    visible: _showPayloadSection,
+                    child: Column(
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              flex: 3,
+                              child: _ModernInputField(
+                                controller: _ipCtrl,
+                                hint: 'Target IP Address',
+                                icon: Icons.lan_outlined,
+                                keyboard: TextInputType.number,
+                                formatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              flex: 1,
+                              child: _ModernInputField(
+                                controller: _portCtrl,
+                                hint: 'Port',
+                                icon: Icons.settings_ethernet_outlined,
+                                keyboard: TextInputType.number,
+                                formatters: [FilteringTextInputFormatter.digitsOnly],
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        _ModernFilePicker(
+                          file: _selectedFile,
+                          onTap: _pickFile,
+                        ),
+                        const SizedBox(height: 20),
+                        _ModernActionButton(
+                          label: 'Send Payload',
+                          loading: _sending,
+                          onTap: _sending ? null : _sendPayload,
+                          style: _ModernActionStyle.primary,
+                          icon: Icons.rocket_launch_outlined,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                // History Card
+                if (_history.isNotEmpty) ...[
+                  const SizedBox(height: 24),
+                  _ModernCard(
+                    title: 'Recent Payloads',
+                    icon: Icons.history_outlined,
+                    action: Row(
+                      children: [
+                        _ModernExpandButton(
+                          expanded: _showHistorySection,
+                          onTap: () {
+                            HapticFeedback.selectionClick();
+                            setState(() => _showHistorySection = !_showHistorySection);
+                          },
+                        ),
+                        const SizedBox(width: 12),
+                        GestureDetector(
+                          onTap: () async {
+                            HapticFeedback.selectionClick();
+                            await PayloadHistoryService.clear();
+                            _loadPayloadHistory();
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: Colors.red.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.red.withOpacity(0.3)),
+                            ),
+                            child: const Text('Clear All', style: TextStyle(
+                              color: Colors.redAccent, fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                            )),
+                          ),
+                        ),
+                      ],
+                    ),
+                    child: _ModernAnimatedSection(
+                      visible: _showHistorySection,
+                      child: Column(
+                        children: _history.map((r) => _ModernHistoryTile(
+                          record: r,
+                          onTap: () {
+                            HapticFeedback.selectionClick();
+                            _ipCtrl.text = r.ip;
+                            _portCtrl.text = r.port.toString();
+                            setState(() => _selectedFile =
+                                File(r.filePath).existsSync() ? File(r.filePath) : null);
+                          },
+                        )).toList(),
+                      ),
+                    ),
+                  ),
+                ],
+
+                // Connection Card
+                if (cp.isConnected) ...[
+                  const SizedBox(height: 24),
+                  _ModernCard(
+                    title: 'Connection',
+                    icon: Icons.link_outlined,
+                    child: Column(
+                      children: [
+                        _ModernActionButton(
+                          label: 'Disconnect',
+                          loading: _disconnecting,
+                          onTap: (_disconnecting || _clearingToken) ? null : _doDisconnect,
+                          style: _ModernActionStyle.danger,
+                          icon: Icons.link_off_outlined,
+                        ),
+                        const SizedBox(height: 12),
+                        _ModernActionButton(
+                          label: cp.hasToken ? 'Clear Saved Token' : 'No Token Saved',
+                          loading: _clearingToken,
+                          onTap: (cp.hasToken && !_disconnecting && !_clearingToken)
+                              ? _doClearToken
+                              : null,
+                          style: _ModernActionStyle.ghost,
+                          icon: Icons.key_off_outlined,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ]),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Modern Card Component ───────────────────────────────────────────────
+
+class _ModernCard extends StatelessWidget {
+  const _ModernCard({
+    required this.title,
+    required this.child,
+    required this.icon,
+    this.action,
+  });
+  
+  final String title;
+  final Widget child;
+  final IconData icon;
+  final Widget? action;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A1A2E),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: Colors.white.withOpacity(0.1),
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.3),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(
+                    icon,
+                    color: Colors.white,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                if (action != null) action!,
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(
+              left: 20,
+              right: 20,
+              bottom: 20,
+            ),
+            child: child,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Modern Toggle Tile ───────────────────────────────────────────────────
+
+class _ModernToggleTile extends StatelessWidget {
+  const _ModernToggleTile({
+    required this.label,
+    required this.subtitle,
+    required this.value,
+    required this.onChanged,
+    this.isLast = false,
+  });
+  
+  final String label;
+  final String subtitle;
+  final bool value;
+  final void Function(bool) onChanged;
+  final bool isLast;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.6),
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
                 ),
               ),
+              const SizedBox(width: 16),
+              Switch(
+                value: value,
+                onChanged: (v) {
+                  HapticFeedback.selectionClick();
+                  onChanged(v);
+                },
+                activeColor: const Color(0xFF4CAF50),
+                inactiveThumbColor: Colors.white.withOpacity(0.3),
+                inactiveTrackColor: Colors.white.withOpacity(0.1),
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
             ],
+          ),
+        ),
+        if (!isLast)
+          Divider(
+            height: 1,
+            thickness: 1,
+            color: Colors.white.withOpacity(0.1),
+          ),
+      ],
+    );
+  }
+}
 
-            // ── Connection ───────────────────────────────────────────
-            if (cp.isConnected) ...[
-              const SizedBox(height: 28),
-              const _SectionHeader('CONNECTION'),
-              const SizedBox(height: 8),
-              // BUG FIX: Two separate buttons — Disconnect vs Clear Token
-              _ActionButton(
-                label: 'DISCONNECT',
-                loading: _disconnecting,
-                onTap: (_disconnecting || _clearingToken) ? null : _doDisconnect,
-                style: _ActionStyle.danger,
-                icon: Icons.link_off_outlined,
+// ── Modern Input Field ───────────────────────────────────────────────────
+
+class _ModernInputField extends StatelessWidget {
+  const _ModernInputField({
+    required this.controller,
+    required this.hint,
+    required this.icon,
+    this.keyboard = TextInputType.text,
+    this.formatters,
+  });
+  
+  final TextEditingController controller;
+  final String hint;
+  final IconData icon;
+  final TextInputType keyboard;
+  final List<TextInputFormatter>? formatters;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: Colors.white.withOpacity(0.1),
+        ),
+      ),
+      child: TextField(
+        controller: controller,
+        keyboardType: keyboard,
+        inputFormatters: formatters,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 14,
+        ),
+        decoration: InputDecoration(
+          prefixIcon: Icon(
+            icon,
+            color: Colors.white.withOpacity(0.5),
+            size: 20,
+          ),
+          border: InputBorder.none,
+          hintText: hint,
+          hintStyle: TextStyle(
+            color: Colors.white.withOpacity(0.4),
+            fontSize: 14,
+          ),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 12,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Modern File Picker ───────────────────────────────────────────────────
+
+class _ModernFilePicker extends StatelessWidget {
+  const _ModernFilePicker({
+    required this.file,
+    required this.onTap,
+  });
+  
+  final File? file;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: file != null 
+              ? const Color(0xFF4CAF50).withOpacity(0.1)
+              : Colors.white.withOpacity(0.05),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: file != null 
+                ? const Color(0xFF4CAF50).withOpacity(0.3)
+                : Colors.white.withOpacity(0.1),
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: file != null 
+                    ? const Color(0xFF4CAF50).withOpacity(0.2)
+                    : Colors.white.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
               ),
-              const SizedBox(height: 8),
-              _ActionButton(
-                label: cp.hasToken ? 'CLEAR SAVED TOKEN' : 'NO TOKEN SAVED',
-                loading: _clearingToken,
-                onTap: (cp.hasToken && !_disconnecting && !_clearingToken)
-                    ? _doClearToken
-                    : null,
-                style: _ActionStyle.ghost,
-                icon: Icons.key_off_outlined,
+              child: Icon(
+                file != null ? Icons.description_outlined : Icons.attach_file_outlined,
+                color: file != null ? const Color(0xFF4CAF50) : Colors.white.withOpacity(0.6),
+                size: 20,
               ),
-            ],
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    file != null
+                        ? file!.path.split(Platform.pathSeparator).last
+                        : 'Select payload file',
+                    style: TextStyle(
+                      color: file != null ? Colors.white : Colors.white.withOpacity(0.6),
+                      fontSize: 14,
+                      fontWeight: file != null ? FontWeight.w500 : FontWeight.normal,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (file != null)
+                    Text(
+                      'Ready to send',
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.4),
+                        fontSize: 12,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.chevron_right,
+              color: Colors.white.withOpacity(0.4),
+              size: 20,
+            ),
           ],
         ),
       ),
@@ -322,7 +706,252 @@ class _SettingsScreenState extends State<SettingsScreen>
   }
 }
 
-// ── Animated collapsible section ─────────────────────────────────────────
+// ── Modern Action Button ─────────────────────────────────────────────────
+
+enum _ModernActionStyle { primary, danger, ghost }
+
+class _ModernActionButton extends StatelessWidget {
+  const _ModernActionButton({
+    required this.label,
+    required this.onTap,
+    required this.style,
+    this.loading = false,
+    this.icon,
+  });
+  
+  final String label;
+  final VoidCallback? onTap;
+  final bool loading;
+  final _ModernActionStyle style;
+  final IconData? icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final disabled = onTap == null && !loading;
+
+    Color bg, fg, border;
+    switch (style) {
+      case _ModernActionStyle.primary:
+        bg = disabled ? Colors.white.withOpacity(0.1) : const Color(0xFF4CAF50);
+        fg = Colors.white;
+        border = disabled ? Colors.white.withOpacity(0.1) : const Color(0xFF4CAF50);
+      case _ModernActionStyle.danger:
+        bg = disabled ? Colors.white.withOpacity(0.1) : const Color(0xFFE53935);
+        fg = Colors.white;
+        border = disabled ? Colors.white.withOpacity(0.1) : const Color(0xFFE53935);
+      case _ModernActionStyle.ghost:
+        bg = Colors.white.withOpacity(0.05);
+        fg = disabled ? Colors.white.withOpacity(0.3) : Colors.white.withOpacity(0.8);
+        border = Colors.white.withOpacity(0.1);
+    }
+
+    return GestureDetector(
+      onTap: loading ? null : onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: border),
+          boxShadow: [
+            if (!disabled && style == _ModernActionStyle.primary)
+              BoxShadow(
+                color: const Color(0xFF4CAF50).withOpacity(0.3),
+                blurRadius: 8,
+                offset: const Offset(0, 4),
+              ),
+          ],
+        ),
+        child: loading
+            ? Center(
+                child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    color: fg,
+                    strokeWidth: 2,
+                  ),
+                ),
+              )
+            : Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  if (icon != null) ...[
+                    Icon(icon, color: fg, size: 18),
+                    const SizedBox(width: 8),
+                  ],
+                  Text(
+                    label,
+                    style: TextStyle(
+                      color: fg,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+}
+
+// ── Modern History Tile ───────────────────────────────────────────────────
+
+class _ModernHistoryTile extends StatelessWidget {
+  const _ModernHistoryTile({
+    required this.record,
+    required this.onTap,
+  });
+  
+  final PayloadRecord record;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final dt = record.sentAt;
+    final ts = '${dt.day}/${dt.month}  '
+               '${dt.hour.toString().padLeft(2, '0')}:'
+               '${dt.minute.toString().padLeft(2, '0')}';
+    
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.05),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: Colors.white.withOpacity(0.1),
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.history_outlined,
+                  color: Colors.white,
+                  size: 16,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      record.fileName,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${record.ip}:${record.port}  ·  $ts',
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.5),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF4CAF50).withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: const Color(0xFF4CAF50).withOpacity(0.3),
+                  ),
+                ),
+                child: const Text(
+                  'USE',
+                  style: TextStyle(
+                    color: Color(0xFF4CAF50),
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Modern Expand Button ──────────────────────────────────────────────────
+
+class _ModernExpandButton extends StatelessWidget {
+  const _ModernExpandButton({
+    required this.expanded,
+    required this.onTap,
+  });
+  
+  final bool expanded;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: AnimatedRotation(
+          turns: expanded ? 0 : -0.5,
+          duration: const Duration(milliseconds: 300),
+          child: const Icon(
+            Icons.keyboard_arrow_up,
+            color: Colors.white,
+            size: 18,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Modern Animated Section ───────────────────────────────────────────────
+
+class _ModernAnimatedSection extends StatelessWidget {
+  const _ModernAnimatedSection({
+    required this.visible,
+    required this.child,
+  });
+  
+  final bool visible;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedCrossFade(
+      duration: const Duration(milliseconds: 300),
+      crossFadeState: visible
+          ? CrossFadeState.showFirst
+          : CrossFadeState.showSecond,
+      firstChild: child,
+      secondChild: const SizedBox.shrink(),
+    );
+  }
+}
+
+// ── Legacy Components (kept for compatibility) ───────────────────────────────
 
 class _AnimatedSection extends StatelessWidget {
   const _AnimatedSection({required this.visible, required this.child});
@@ -340,299 +969,5 @@ class _AnimatedSection extends StatelessWidget {
   );
 }
 
-// ── Section header ────────────────────────────────────────────────────────
-
-class _SectionHeader extends StatelessWidget {
-  const _SectionHeader(this.label);
-  final String label;
-
-  @override
-  Widget build(BuildContext context) => Row(children: [
-    Text(label, style: const TextStyle(
-      color: Bk.textDim, fontSize: 9,
-      fontWeight: FontWeight.w700, letterSpacing: 2,
-    )),
-    const SizedBox(width: 8),
-    Expanded(child: Container(height: 1, color: Bk.border)),
-  ]);
-}
-
-// ── Collapse button ───────────────────────────────────────────────────────
-
-class _CollapseButton extends StatelessWidget {
-  const _CollapseButton({required this.expanded, required this.onTap});
-  final bool expanded;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) => GestureDetector(
-    onTap: onTap,
-    child: AnimatedRotation(
-      turns: expanded ? 0 : -0.5,
-      duration: const Duration(milliseconds: 220),
-      child: const Icon(Icons.keyboard_arrow_up, color: Bk.textDim, size: 16),
-    ),
-  );
-}
-
-// ── Toggle group wrapper ──────────────────────────────────────────────────
-
-class _ToggleGroup extends StatelessWidget {
-  const _ToggleGroup({required this.children});
-  final List<Widget> children;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    decoration: BoxDecoration(
-      color: Bk.surface1,
-      borderRadius: BorderRadius.circular(12),
-      border: Border.all(color: Bk.border),
-    ),
-    child: Column(children: children),
-  );
-}
-
-// ── Toggle tile ───────────────────────────────────────────────────────────
-
-class _ToggleTile extends StatelessWidget {
-  const _ToggleTile({
-    required this.label,
-    required this.value,
-    required this.onChanged,
-    this.last = false,
-  });
-  final String label;
-  final bool value;
-  final void Function(bool) onChanged;
-  final bool last;
-
-  @override
-  Widget build(BuildContext context) => Column(children: [
-    Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
-      child: Row(children: [
-        Expanded(child: Text(label,
-          style: const TextStyle(color: Bk.textPri, fontSize: 13))),
-        Switch(
-          value: value,
-          onChanged: (v) {
-            HapticFeedback.selectionClick();
-            onChanged(v);
-          },
-          activeColor: Bk.white,
-          inactiveThumbColor: Bk.textDim,
-          inactiveTrackColor: Bk.surface2,
-          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        ),
-      ]),
-    ),
-    if (!last) Divider(height: 1, thickness: 1, color: Bk.border.withOpacity(0.5),
-        indent: 14, endIndent: 14),
-  ]);
-}
-
-// ── Input field ───────────────────────────────────────────────────────────
-
-class _InputField extends StatelessWidget {
-  const _InputField({
-    required this.controller,
-    required this.hint,
-    this.keyboard = TextInputType.text,
-    this.formatters,
-  });
-  final TextEditingController controller;
-  final String hint;
-  final TextInputType keyboard;
-  final List<TextInputFormatter>? formatters;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-    decoration: BoxDecoration(
-      color: Bk.surface1,
-      borderRadius: BorderRadius.circular(10),
-      border: Border.all(color: Bk.border),
-    ),
-    child: TextField(
-      controller: controller,
-      keyboardType: keyboard,
-      inputFormatters: formatters,
-      style: const TextStyle(color: Bk.textPri, fontSize: 13),
-      decoration: InputDecoration(
-        border: InputBorder.none,
-        hintText: hint,
-        hintStyle: const TextStyle(color: Bk.textDim, fontSize: 12),
-        isDense: true,
-      ),
-    ),
-  );
-}
-
-// ── File picker row ───────────────────────────────────────────────────────
-
-class _FilePicker extends StatelessWidget {
-  const _FilePicker({required this.file, required this.onTap});
-  final File? file;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) => GestureDetector(
-    onTap: onTap,
-    child: Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-      decoration: BoxDecoration(
-        color: Bk.surface1,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: file != null ? Bk.white.withOpacity(0.3) : Bk.border),
-      ),
-      child: Row(children: [
-        Icon(
-          file != null ? Icons.description_outlined : Icons.attach_file_outlined,
-          color: file != null ? Bk.textSec : Bk.textDim,
-          size: 16,
-        ),
-        const SizedBox(width: 10),
-        Expanded(child: Text(
-          file != null
-              ? file!.path.split(Platform.pathSeparator).last
-              : 'Select payload file…',
-          style: TextStyle(
-            color: file != null ? Bk.textPri : Bk.textDim,
-            fontSize: 13,
-          ),
-          overflow: TextOverflow.ellipsis,
-        )),
-        const Icon(Icons.chevron_right, color: Bk.textDim, size: 16),
-      ]),
-    ),
-  );
-}
-
-// ── Action button ─────────────────────────────────────────────────────────
-
-enum _ActionStyle { primary, danger, ghost }
-
-class _ActionButton extends StatelessWidget {
-  const _ActionButton({
-    required this.label,
-    required this.onTap,
-    required this.style,
-    this.loading = false,
-    this.icon,
-  });
-  final String label;
-  final VoidCallback? onTap;
-  final bool loading;
-  final _ActionStyle style;
-  final IconData? icon;
-
-  @override
-  Widget build(BuildContext context) {
-    final disabled = onTap == null && !loading;
-
-    Color bg, fg, border;
-    switch (style) {
-      case _ActionStyle.primary:
-        bg     = disabled ? Bk.surface2 : Bk.white;
-        fg     = Bk.oled;
-        border = Bk.border;
-      case _ActionStyle.danger:
-        bg     = disabled ? Bk.surface1 : const Color(0xFF1A0808);
-        fg     = disabled ? Bk.textDim : Colors.redAccent;
-        border = disabled ? Bk.border : Colors.redAccent.withOpacity(0.4);
-      case _ActionStyle.ghost:
-        bg     = Bk.surface1;
-        fg     = disabled ? Bk.textDim : Bk.textSec;
-        border = Bk.border;
-    }
-
-    return GestureDetector(
-      onTap: loading ? null : onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
-        decoration: BoxDecoration(
-          color: bg,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: border),
-        ),
-        child: loading
-            ? Center(child: SizedBox(
-                width: 16, height: 16,
-                child: CircularProgressIndicator(
-                  color: style == _ActionStyle.primary ? Bk.oled : fg,
-                  strokeWidth: 2,
-                ),
-              ))
-            : Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                if (icon != null) ...[
-                  Icon(icon, color: fg, size: 15),
-                  const SizedBox(width: 8),
-                ],
-                Text(label, style: TextStyle(
-                  color: fg,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 1.8,
-                )),
-              ]),
-      ),
-    );
-  }
-}
-
-// ── History tile ──────────────────────────────────────────────────────────
-
-class _HistoryTile extends StatelessWidget {
-  const _HistoryTile({required this.record, required this.onTap});
-  final PayloadRecord record;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final dt = record.sentAt;
-    final ts = '${dt.day}/${dt.month}  '
-               '${dt.hour.toString().padLeft(2, '0')}:'
-               '${dt.minute.toString().padLeft(2, '0')}';
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-          decoration: BoxDecoration(
-            color: Bk.surface1,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: Bk.border),
-          ),
-          child: Row(children: [
-            const Icon(Icons.history_outlined, color: Bk.textDim, size: 14),
-            const SizedBox(width: 10),
-            Expanded(child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(record.fileName, style: const TextStyle(
-                  color: Bk.textPri, fontSize: 12, fontWeight: FontWeight.w600),
-                  overflow: TextOverflow.ellipsis),
-                const SizedBox(height: 2),
-                Text('${record.ip}:${record.port}  ·  $ts',
-                  style: const TextStyle(color: Bk.textDim, fontSize: 10,
-                    fontFamily: 'monospace')),
-              ],
-            )),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-              decoration: BoxDecoration(
-                color: Bk.border.withOpacity(0.4),
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: const Text('USE', style: TextStyle(
-                color: Bk.textDim, fontSize: 8,
-                fontWeight: FontWeight.w900, letterSpacing: 1.5)),
-            ),
-          ]),
-        ),
-      ),
-    );
-  }
-}
+// Legacy components kept for compatibility - they are no longer used in the modern UI
+// but kept here to prevent any potential compilation errors
