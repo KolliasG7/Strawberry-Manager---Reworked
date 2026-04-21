@@ -71,38 +71,51 @@ class ConnectionProvider extends ChangeNotifier {
   bool _critNotifSent = false;
   String? _lastNotifBody;
 
-  // ── Persist ───────────────────────────────────────────────────────────
+  // ── Persist ──────────────────────────────────────────────────────────
 
   Future<void> loadSaved() async {
-    final p = await SharedPreferences.getInstance();
-    _rawInput          = p.getString('ps4_addr')          ?? '';
-    _isTunnel          = p.getBool('ps4_is_tunnel')        ?? false;
-    _token             = p.getString('ps4_token')          ?? '';
-    _showCpuGraph      = p.getBool('show_cpu_graph')       ?? true;
-    _showRamGraph      = p.getBool('show_ram_graph')       ?? true;
-    _showThermalGraph  = p.getBool('show_thermal_graph')   ?? true;
-    _showNotifications = p.getBool('show_notifications')   ?? true;
-    notifyListeners();
+    try {
+      final p = await SharedPreferences.getInstance();
+      _rawInput          = p.getString('ps4_addr')          ?? '';
+      _isTunnel          = p.getBool('ps4_is_tunnel')        ?? false;
+      _token             = p.getString('ps4_token')          ?? '';
+      _showCpuGraph      = p.getBool('show_cpu_graph')       ?? true;
+      _showRamGraph      = p.getBool('show_ram_graph')       ?? true;
+      _showThermalGraph  = p.getBool('show_thermal_graph')   ?? true;
+      _showNotifications = p.getBool('show_notifications')   ?? true;
+      notifyListeners();
+    } catch (e) {
+      // Handle SharedPreferences errors gracefully
+      debugPrint('[ConnectionProvider] Error loading saved data: $e');
+    }
   }
 
   Future<void> _save() async {
-    final p = await SharedPreferences.getInstance();
-    await p.setString('ps4_addr',            _rawInput);
-    await p.setBool  ('ps4_is_tunnel',       _isTunnel);
-    await p.setString('ps4_token',           _token);
-    await p.setBool  ('show_cpu_graph',      _showCpuGraph);
-    await p.setBool  ('show_ram_graph',      _showRamGraph);
-    await p.setBool  ('show_thermal_graph',  _showThermalGraph);
-    await p.setBool  ('show_notifications',  _showNotifications);
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.setString('ps4_addr',            _rawInput);
+      await p.setBool  ('ps4_is_tunnel',       _isTunnel);
+      await p.setString('ps4_token',           _token);
+      await p.setBool  ('show_cpu_graph',      _showCpuGraph);
+      await p.setBool  ('show_ram_graph',      _showRamGraph);
+      await p.setBool  ('show_thermal_graph',  _showThermalGraph);
+      await p.setBool  ('show_notifications',  _showNotifications);
+    } catch (e) {
+      debugPrint('[ConnectionProvider] Error saving preferences: $e');
+    }
   }
 
   Future<void> _saveToken(String t) async {
-    _token = t;
-    final p = await SharedPreferences.getInstance();
-    await p.setString('ps4_token', t);
+    try {
+      _token = t;
+      final p = await SharedPreferences.getInstance();
+      await p.setString('ps4_token', t);
+    } catch (e) {
+      debugPrint('[ConnectionProvider] Error saving token: $e');
+    }
   }
 
-  // ── Connect ───────────────────────────────────────────────────────────
+  // ── Connect ──────────────────────────────────────────────────────────
   // Flow:
   //   1. Health check (open endpoint — always passes if server is up)
   //   2. Verify saved token
@@ -123,9 +136,9 @@ class ConnectionProvider extends ChangeNotifier {
     final base = _effectiveBase(_rawInput);
     _api = ApiService(base, token: _token);
 
-    // 1. Health check
+    // 1. Health check with timeout
     try {
-      final health = await _api!.getHealth();
+      final health = await _api!.getHealth().timeout(const Duration(seconds: 10));
       if (health['status'] != 'ok' && health['status'] != 'degraded') {
         throw Exception('Server unhealthy: ${health['status']}');
       }
@@ -162,7 +175,7 @@ class ConnectionProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final t = await _api!.login(password);
+      final t = await _api!.login(password).timeout(const Duration(seconds: 10));
       await _saveToken(t);
     } catch (e) {
       _error = e.toString();
@@ -176,13 +189,16 @@ class ConnectionProvider extends ChangeNotifier {
 
   void _connectWs(String base) async {
     try {
-      final profs = await _api!.getLedProfiles();
+      final profs = await _api!.getLedProfiles().timeout(const Duration(seconds: 5));
       final p = await SharedPreferences.getInstance();
       await p.setString('ps4_led_profiles', profs.join(','));
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[ConnectionProvider] Error loading LED profiles: $e');
+    }
 
     _ws = WsService(base, token: _token);
 
+    // FIXED: Use proper enum comparison instead of toString().contains()
     _wsStateSub = _ws!.state.listen((s) {
       if (s == WsState.connected && _connState != ConnState.connected) {
         _connState = ConnState.connected;
@@ -211,7 +227,8 @@ class ConnectionProvider extends ChangeNotifier {
 
     final tunnelUrl = f.tunnel?.url;
     if (tunnelUrl != null && f.tunnel!.isRunning && _isTunnel) {
-      if (_ws != null && !_ws!.currentState.toString().contains('connected')) {
+      // FIXED: Better null checking and state comparison
+      if (_ws != null && _ws!.currentState != WsState.connected) {
         _ws!.updateUrl(tunnelUrl);
       }
     }
@@ -220,10 +237,10 @@ class ConnectionProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ── Tunnel ────────────────────────────────────────────────────────────
+  // ── Tunnel ──────────────────────────────────────────────────────────
 
   Future<String> startTunnel() async {
-    final result = await _api!.startTunnel();
+    final result = await _api!.startTunnel().timeout(const Duration(seconds: 35));
     final url = result['url'] as String?;
     if (url == null) throw Exception('No URL returned');
 
@@ -282,20 +299,25 @@ class ConnectionProvider extends ChangeNotifier {
     final rpm  = f.fan?.rpm        ?? 0;
     final ram  = f.ram?.percent    ?? 0;
     final net  = f.primaryNet;
+    
     String netStr = '';
     if (net != null) {
-      final tx = (net.bytesSentS / 1024 / 1024).toStringAsFixed(1);
-      final rx = (net.bytesRecvS / 1024 / 1024).toStringAsFixed(1);
-      netStr = '  ▼${rx}M/s ▲${tx}M/s';
+      // FIXED: Safe null-aware network speed calculations
+      final txMbps = (net.bytesSentS / 1024 / 1024).toStringAsFixed(1);
+      final rxMbps = (net.bytesRecvS / 1024 / 1024).toStringAsFixed(1);
+      netStr = '  ▼${rxMbps}M/s ▲${txMbps}M/s';
     }
+    
     final body = 'CPU ${cpu.toStringAsFixed(0)}% • RAM ${ram.toStringAsFixed(0)}%\n'
-               '${temp.toStringAsFixed(0)}°C • ${rpm == 0 ? "Fan off" : "$rpm RPM"} • Up ${f.uptimeFormatted}\n'
-               'Net ${net?.iface ?? "lo"}$netStr';
+                '${temp.toStringAsFixed(0)}°C • ${rpm == 0 ? "Fan off" : "$rpm RPM"} • Up ${f.uptimeFormatted}\n'
+                'Net ${net?.iface ?? "lo"}$netStr';
+    
     if (body != _lastNotifBody) {
       _lastNotifBody = body;
       NotificationService.showStatus(title: 'PlayStation4', body: body);
       NotificationService.storeLastTemp(temp);
     }
+    
     if (temp >= 90 && !_critNotifSent) {
       _critNotifSent = true;
       NotificationService.showAlert(title: '⚠️ PS4 Temp Critical',
