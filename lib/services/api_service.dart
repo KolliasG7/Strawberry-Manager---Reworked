@@ -1,4 +1,4 @@
-// lib/services/api_service.dart
+// lib/services/api_service.dart - WITH RETRY LOGIC AND ALL IMPORTS
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:http/http.dart' as http;
@@ -93,7 +93,7 @@ class ApiService {
     );
   }
 
-  // ── Fan ────────────────────────────────────────────────────────────
+  // ── Fan ────────────────────────────────────��───────────────────────
 
   Future<int> getFanThreshold() async {
     return _retry.execute(
