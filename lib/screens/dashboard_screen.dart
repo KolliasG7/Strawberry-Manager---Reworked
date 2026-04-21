@@ -92,6 +92,18 @@ class _DashboardScreenState extends State<DashboardScreen>
                     ws: cp.ws,
                     onSettings: _openSettings,
                   ),
+                  // Slim animated banner that only appears when the ws
+                  // connection is down mid-session. Driven by
+                  // ConnectionProvider.connState so it snaps shut the
+                  // moment the first frame comes back in.
+                  _ReconnectBanner(
+                    visible: cp.connState == ConnState.connecting
+                        && cp.frame != null,
+                    onRetry: () {
+                      HapticFeedback.selectionClick();
+                      cp.ws?.connect();
+                    },
+                  ),
                   Expanded(
                     child: AnimatedSwitcher(
                       // Phased fade-through via [tabBodyTransition]: the
@@ -581,3 +593,74 @@ class _ErrorCard extends StatelessWidget {
 // feel like it was constantly re-introducing itself. The dashboard's
 // single top-level entrance already covers first mount; individual card
 // entrances on tab swap weren't adding signal, only latency.
+
+// ── Reconnect banner ──────────────────────────────────────────────────────
+// Slim amber strip that slides down from under the top bar whenever the
+// telemetry ws drops mid-session. Shows a spinner + a "Retry" button so
+// users aren't left guessing why the dashboard suddenly froze, and makes
+// transient network blips obvious instead of silent.
+
+class _ReconnectBanner extends StatelessWidget {
+  const _ReconnectBanner({
+    required this.visible,
+    required this.onRetry,
+  });
+  final bool visible;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+      alignment: Alignment.topCenter,
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 180),
+        transitionBuilder: (child, anim) =>
+            FadeTransition(opacity: anim, child: child),
+        child: visible
+            ? Padding(
+                key: const ValueKey('banner'),
+                padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.xl, 0, AppSpacing.xl, AppSpacing.sm),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.md, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Bk.warn.withOpacity(0.12),
+                    border: Border.all(color: Bk.warn.withOpacity(0.4)),
+                    borderRadius: BorderRadius.circular(AppRadii.md),
+                  ),
+                  child: Row(children: [
+                    const SizedBox(
+                      width: 14, height: 14,
+                      child: CircularProgressIndicator(
+                        color: Bk.warn, strokeWidth: 1.8),
+                    ),
+                    const SizedBox(width: AppSpacing.md),
+                    const Expanded(child: Text(
+                      'Reconnecting\u2026',
+                      style: TextStyle(
+                        color: Bk.warn, fontSize: 12,
+                        fontWeight: FontWeight.w700, letterSpacing: 0.2))),
+                    TextButton(
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: AppSpacing.md, vertical: 4),
+                        foregroundColor: Bk.warn,
+                        minimumSize: const Size(0, 28),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      onPressed: onRetry,
+                      child: const Text('Retry',
+                        style: TextStyle(
+                          fontSize: 12, fontWeight: FontWeight.w700)),
+                    ),
+                  ]),
+                ),
+              )
+            : const SizedBox.shrink(key: ValueKey('hidden')),
+      ),
+    );
+  }
+}
