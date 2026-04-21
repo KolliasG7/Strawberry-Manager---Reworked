@@ -75,7 +75,6 @@ class _FanControlCardState extends State<FanControlCard>
   @override
   Widget build(BuildContext context) {
     final displayVal = _val.round();
-    final pct  = (_val - _min) / (_max - _min);
     // Color shifts warm → hot as threshold rises
     final tColor = displayVal >= 80 ? Bk.red
                  : displayVal >= 70 ? Bk.amber : Bk.cyan;
