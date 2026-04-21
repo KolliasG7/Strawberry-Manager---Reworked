@@ -332,7 +332,6 @@ class _AnimatedSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) => AnimatedCrossFade(
     duration: const Duration(milliseconds: 240),
-    curve: Curves.easeOutCubic,
     crossFadeState: visible
         ? CrossFadeState.showFirst
         : CrossFadeState.showSecond,
