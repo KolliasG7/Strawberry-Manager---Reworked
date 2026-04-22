@@ -7,6 +7,8 @@
 // simple: not a tailing subscription, just a snapshot on demand, because
 // the daemon's log volume is low and a WS stream would be overkill for
 // an in-app "what's wrong on my PS4" tool.
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -37,9 +39,15 @@ class _LogsScreenState extends State<LogsScreen> {
   bool _loading = true;
   String? _err;
   DateTime? _lastUpdated;
-  // Guards against overlapping fetches when the user mashes the filter
-  // chips or pull-to-refreshes while a prior request is in flight.
+  // Overlap guard: when a fetch is already running, new calls to
+  // _load() set _pendingReload instead of firing a second HTTP
+  // request. The finally-block drains the pending flag by issuing
+  // exactly one more fetch with whatever the most recent _lines /
+  // _priority values are — so rapid chip taps always end with a
+  // request that matches the currently-selected filter, and
+  // pull-to-refresh never silently no-ops.
   bool _inFlight = false;
+  bool _pendingReload = false;
 
   @override
   void initState() {
@@ -48,7 +56,10 @@ class _LogsScreenState extends State<LogsScreen> {
   }
 
   Future<void> _load() async {
-    if (_inFlight) return;
+    if (_inFlight) {
+      _pendingReload = true;
+      return;
+    }
     _inFlight = true;
     if (mounted) setState(() { _loading = true; _err = null; });
     try {
@@ -73,6 +84,20 @@ class _LogsScreenState extends State<LogsScreen> {
       });
     } finally {
       _inFlight = false;
+      // Drain one queued request if any filter changed / pull-to-
+      // refresh was requested while we were busy. We don't chain
+      // further than one extra hop: coalescing multiple queued
+      // requests into the single re-fetch is the whole point, and
+      // the current _lines/_priority fields are already the latest
+      // values the user wanted.
+      if (_pendingReload && mounted) {
+        _pendingReload = false;
+        // Intentionally unawaited: this is a fire-and-forget drain
+        // from inside our own finally-block. The awaiting caller
+        // (usually RefreshIndicator) only needs its in-flight
+        // Future to complete for its spinner to dismiss.
+        unawaited(_load());
+      }
     }
   }
 
