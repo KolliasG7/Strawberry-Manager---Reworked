@@ -1,72 +1,90 @@
-name: Build Apps
+name: Build App
 
 on:
-  push:
-    branches: [main, testing]
-  pull_request:
-    branches: [main]
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: 'Platform to build'
+        required: true
+        type: choice
+        options:
+          - windows
+          - linux
+          - macos
+          - android
+          - ios
+        default: 'windows'
 
 jobs:
-  build-desktop:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+  build-windows:
+    runs-on: windows-latest
+    if: github.event.inputs.platform == 'windows'
     steps:
       - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+      - run: flutter config --enable-windows-desktop
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter build windows --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-app
+          path: build/windows/release/bundle
 
-      - name: Install Flutter
-        uses: subosito/flutter-action@v2
-
-      - name: Enable desktop support
-        run: flutter config --enable-${{ matrix.platform }}-desktop
-
-      - name: Get dependencies
-        run: flutter pub get
-
-      - name: Analyze code
-        run: flutter analyze
-
-      - name: Build ${{ matrix.platform }} app
-        run: flutter build ${{ matrix.platform }} --release
-        env:
-          FLUTTER_VERSION: 'stable'
-
-    matrix:
-      include:
-        - os: ubuntu-latest
-          platform: linux
-        - os: macos-latest
-          platform: macos
-        - os: windows-latest
-          platform: windows
-
-  build-mobile:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest]
-        platform: [android, ios]
+  build-linux:
+    runs-on: ubuntu-latest
+    if: github.event.inputs.platform == 'linux'
     steps:
       - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+      - run: flutter config --enable-linux-desktop
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter build linux --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-app
+          path: build/linux/release/bundle
 
-      - name: Install Flutter
-        uses: subosito/flutter-action@v2
+  build-macos:
+    runs-on: macos-latest
+    if: github.event.inputs.platform == 'macos'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+      - run: flutter config --enable-macos-desktop
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter build macos --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-app
+          path: build/macos/release/bundle
 
-      - name: Get dependencies
-        run: flutter pub get
+  build-android:
+    runs-on: ubuntu-latest
+    if: github.event.inputs.platform == 'android'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter build android --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-app
+          path: build/android/release/bundle
 
-      - name: Analyze code
-        run: flutter analyze
-
-      - name: Build ${{ matrix.platform }} app
-        run: flutter build ${{ matrix.platform }} --release
-        env:
-          FLUTTER_VERSION: 'stable'
-        if: matrix.platform == 'android'
-
-      - name: Build ${{ matrix.platform }} app for simulator
-        run: flutter build ios --simulator --no-codesign
-        env:
-          FLUTTER_VERSION: 'stable'
-        if: matrix.platform == 'ios'
+  build-ios:
+    runs-on: ubuntu-latest
+    if: github.event.inputs.platform == 'ios'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter build ios --simulator --no-codesign
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios-app
+          path: build/ios/release/bundle
