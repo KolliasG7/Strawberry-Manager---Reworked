@@ -217,19 +217,59 @@ class _TopBar extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Strawberry', style: TextStyle(
-                  color: Bk.textPri, fontSize: 22,
-                  fontWeight: FontWeight.w800, letterSpacing: -0.2,
-                )),
-                const SizedBox(height: 2),
+                // Enhanced title with gradient effect
+                ShaderMask(
+                  shaderCallback: (bounds) {
+                    return const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        Color(0xFF7DD3FC), // accent
+                        Color(0xFFA5B4FC), // violet
+                        Color(0xFFF472B6), // pink
+                      ],
+                    ).createShader(bounds);
+                  },
+                  child: const Text(
+                    'Strawberry',
+                    textAlign: TextAlign.left,
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 24,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -0.3,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 4),
                 AnimatedSwitcher(
                   duration: AppDurations.med,
-                  child: Text(
-                    frame == null
-                        ? 'Connecting…'
-                        : 'Uptime ${frame!.uptimeFormatted}',
+                  child: Container(
                     key: ValueKey(frame == null ? 'wait' : 'ok'),
-                    style: const TextStyle(color: Bk.textSec, fontSize: 12),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: frame == null
+                          ? Bk.textDim.withValues(alpha: 0.1)
+                          : Bk.success.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(AppRadii.pill),
+                      border: Border.all(
+                        color: frame == null
+                            ? Bk.textDim.withValues(alpha: 0.3)
+                            : Bk.success.withValues(alpha: 0.4),
+                        width: 1,
+                      ),
+                    ),
+                    child: Text(
+                      frame == null
+                          ? 'Connecting…'
+                          : 'Uptime ${frame!.uptimeFormatted}',
+                      style: TextStyle(
+                        color: frame == null ? Bk.textDim : Bk.success,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
                   ),
                 ),
               ],
@@ -264,8 +304,21 @@ class _ConnStatus extends StatelessWidget {
           WsState.connecting   => (Bk.warn,     'CONNECTING'),
           WsState.disconnected => (Bk.textDim,  'OFFLINE'),
         };
-        return GlassPill(
+        // Enhanced connection status with glow effect
+        return Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.15),
+            borderRadius: BorderRadius.circular(AppRadii.pill),
+            border: Border.all(color: color.withValues(alpha: 0.4), width: 1),
+            boxShadow: s == WsState.connected ? [
+              BoxShadow(
+                color: color.withValues(alpha: 0.3),
+                blurRadius: 8,
+                spreadRadius: 1,
+              ),
+            ] : null,
+          ),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             _Dot(color: color, pulse: s == WsState.connected),
             const SizedBox(width: 6),
@@ -304,14 +357,15 @@ class _DotState extends State<_Dot> with SingleTickerProviderStateMixin {
     builder: (_, __) {
       final opacity = widget.pulse ? 0.55 + _c.value * 0.45 : 1.0;
       return Container(
-        width: 7, height: 7,
+        width: 8, height: 8,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          color: widget.color.withOpacity(opacity),
+          color: widget.color.withValues(alpha: opacity),
           boxShadow: widget.pulse ? [
             BoxShadow(
-              color: widget.color.withOpacity(0.6 * _c.value),
-              blurRadius: 6, spreadRadius: 1),
+              color: widget.color.withValues(alpha: 0.6 * _c.value),
+              blurRadius: 8,
+              spreadRadius: 2),
           ] : null,
         ),
       );
@@ -582,7 +636,7 @@ class _ErrorCard extends StatelessWidget {
   final String message;
   @override
   Widget build(BuildContext context) => GlassCard(
-    tint: Bk.danger.withOpacity(0.18),
+    tint: Bk.danger.withValues(alpha: 0.18),
     child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
       const Icon(Icons.error_outline, color: Bk.danger, size: 18),
       const SizedBox(width: AppSpacing.md),
@@ -631,8 +685,8 @@ class _ReconnectBanner extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(
                       horizontal: AppSpacing.md, vertical: 8),
                   decoration: BoxDecoration(
-                    color: Bk.warn.withOpacity(0.12),
-                    border: Border.all(color: Bk.warn.withOpacity(0.4)),
+                    color: Bk.warn.withValues(alpha: 0.12),
+                    border: Border.all(color: Bk.warn.withValues(alpha: 0.4)),
                     borderRadius: BorderRadius.circular(AppRadii.md),
                   ),
                   child: Row(children: [

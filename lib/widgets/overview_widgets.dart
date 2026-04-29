@@ -32,10 +32,18 @@ class ArcGauge extends StatelessWidget {
       painter: _ArcP(value.clamp(0.0, 1.0), color),
       child: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
         Text(label, style: TextStyle(
-          color: color, fontSize: size * 0.215,
-          fontWeight: FontWeight.w900, letterSpacing: -0.5)),
+          color: color, fontSize: size * 0.22,
+          fontWeight: FontWeight.w900, letterSpacing: -0.6,
+          shadows: [
+            Shadow(
+              color: color.withValues(alpha: 0.3),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        )),
         Text(sub, style: TextStyle(
-          color: Bk.textDim, fontSize: size * 0.115, letterSpacing: 0.5)),
+          color: Bk.textDim, fontSize: size * 0.12, letterSpacing: 0.6)),
       ])),
     ),
   );
@@ -47,22 +55,32 @@ class _ArcP extends CustomPainter {
   @override
   void paint(Canvas canvas, Size s) {
     final cx = s.width / 2; final cy = s.height / 2;
-    final r  = s.shortestSide / 2 - 7;
+    final r  = s.shortestSide / 2 - 8;
     const start = math.pi * 0.75; const total = math.pi * 1.5;
+
+    // Background arc with subtle glow
     canvas.drawArc(Rect.fromCircle(center: Offset(cx, cy), radius: r),
       start, total, false,
       Paint()..color = Bk.border..style = PaintingStyle.stroke
-        ..strokeWidth = 5.5..strokeCap = StrokeCap.round);
+        ..strokeWidth = 6..strokeCap = StrokeCap.round);
+
     if (v <= 0) return;
     final sweep = total * v;
     final rect = Rect.fromCircle(center: Offset(cx, cy), radius: r);
+
+    // Enhanced foreground arc with gradient and glow
     canvas.drawArc(rect, start, sweep, false,
       Paint()
         ..shader = SweepGradient(
-          colors: [c.withOpacity(0.4), c],
+          colors: [
+            c.withValues(alpha: 0.3),
+            c.withValues(alpha: 0.6),
+            c,
+          ],
           startAngle: start, endAngle: start + sweep,
           tileMode: TileMode.clamp).createShader(rect)
-        ..style = PaintingStyle.stroke..strokeWidth = 5.5..strokeCap = StrokeCap.round);
+        ..style = PaintingStyle.stroke..strokeWidth = 6..strokeCap = StrokeCap.round
+        ..maskFilter = MaskFilter.blur(BlurStyle.outer, 3));
   }
   @override bool shouldRepaint(_ArcP o) => o.v != v || o.c != c;
 }
@@ -81,8 +99,16 @@ class CpuCard extends StatelessWidget {
     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
         const StatLabel('PROCESSOR'),
-        Text('${cpu.freqMhz.toStringAsFixed(0)} MHz',
-          style: const TextStyle(color: Bk.textDim, fontSize: 9, letterSpacing: 1)),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: Bk.accent.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(AppRadii.sm),
+            border: Border.all(color: Bk.accent.withValues(alpha: 0.3)),
+          ),
+          child: Text('${cpu.freqMhz.toStringAsFixed(0)} MHz',
+            style: const TextStyle(color: Bk.accent, fontSize: 9, letterSpacing: 1, fontWeight: FontWeight.w700)),
+        ),
       ]),
       const SizedBox(height: 14),
       Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
@@ -99,7 +125,7 @@ class CpuCard extends StatelessWidget {
         ])),
       ]),
       const SizedBox(height: 12),
-      
+
       if (showGraph) ...[
         SizedBox(
           height: 40,
@@ -126,7 +152,7 @@ class CpuCard extends StatelessWidget {
                   dotData: const FlDotData(show: false),
                   belowBarData: BarAreaData(
                     show: true,
-                    color: _pctColor(cpuHistory.isNotEmpty ? cpuHistory.last : cpu.percent).withOpacity(0.15),
+                    color: _pctColor(cpuHistory.isNotEmpty ? cpuHistory.last : cpu.percent).withValues(alpha: 0.15),
                   ),
                 ),
               ],
@@ -136,7 +162,7 @@ class CpuCard extends StatelessWidget {
       ] else ...[
         ThinBar(value: cpu.percent / 100, gradient: Bk.cpuGrad),
       ],
-      
+
       const SizedBox(height: 12),
       Row(children: [
         _LoadBadge('1m',  cpu.load1),
@@ -155,17 +181,24 @@ class _CorePill extends StatelessWidget {
   @override Widget build(BuildContext context) {
     final color = _pctColor(pct);
     return Container(
-      width: 30, padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+      width: 32, padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 5),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.07),
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: color.withOpacity(0.2)),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            color.withValues(alpha: 0.1),
+            color.withValues(alpha: 0.05),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.3), width: 1),
       ),
       child: Column(children: [
         Text('C$idx', style: const TextStyle(
-          color: Bk.textDim, fontSize: 7, letterSpacing: 0.5)),
-        const SizedBox(height: 3),
-        ThinBar(value: pct / 100, gradient: Bk.cpuGrad, height: 3),
+          color: Bk.textDim, fontSize: 8, letterSpacing: 0.8, fontWeight: FontWeight.w700)),
+        const SizedBox(height: 4),
+        ThinBar(value: pct / 100, gradient: Bk.cpuGrad, height: 4),
       ]),
     );
   }
@@ -175,18 +208,25 @@ class _LoadBadge extends StatelessWidget {
   const _LoadBadge(this.label, this.val);
   final String label; final double val;
   @override Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
     decoration: BoxDecoration(
-      color: Bk.surface1,
-      borderRadius: BorderRadius.circular(7),
-      border: Border.all(color: Bk.border),
+      gradient: const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          Bk.surface1,
+          Bk.surface2,
+        ],
+      ),
+      borderRadius: BorderRadius.circular(8),
+      border: Border.all(color: Bk.border, width: 1),
     ),
     child: Row(mainAxisSize: MainAxisSize.min, children: [
       Text(label, style: const TextStyle(
-        color: Bk.textDim, fontSize: 8, letterSpacing: 1.5)),
-      const SizedBox(width: 5),
+        color: Bk.textDim, fontSize: 9, letterSpacing: 1.8, fontWeight: FontWeight.w700)),
+      const SizedBox(width: 6),
       Text(val.toStringAsFixed(2), style: const TextStyle(
-        color: Bk.textPri, fontSize: 11, fontWeight: FontWeight.w900)),
+        color: Bk.textPri, fontSize: 12, fontWeight: FontWeight.w900, letterSpacing: -0.3)),
     ]),
   );
 }
@@ -249,7 +289,7 @@ class RamCard extends StatelessWidget {
                     dotData: const FlDotData(show: false),
                     belowBarData: BarAreaData(
                       show: true,
-                      color: Bk.violet.withOpacity(0.15),
+                      color: Bk.violet.withValues(alpha: 0.15),
                     ),
                   ),
                 ],
@@ -351,7 +391,7 @@ class ThermalCard extends StatelessWidget {
                     dotData: const FlDotData(show: false),
                     belowBarData: BarAreaData(
                       show: true,
-                      color: _tempColor(tempHistory.isNotEmpty ? tempHistory.last : fan.apuTempC).withOpacity(0.15),
+                      color: _tempColor(tempHistory.isNotEmpty ? tempHistory.last : fan.apuTempC).withValues(alpha: 0.15),
                     ),
                   ),
                 ],
@@ -383,7 +423,7 @@ class ThermalCard extends StatelessWidget {
                     dotData: const FlDotData(show: false),
                     belowBarData: BarAreaData(
                       show: true,
-                      color: Bk.cyan.withOpacity(0.1),
+                      color: Bk.cyan.withValues(alpha: 0.1),
                     ),
                   ),
                 ],
@@ -466,7 +506,7 @@ class _NetBadge extends StatelessWidget {
   final String dir, val; final Color color;
   @override Widget build(BuildContext context) => Row(mainAxisSize: MainAxisSize.min, children: [
     Text(dir, style: TextStyle(
-      color: color.withOpacity(0.7), fontSize: 10, fontWeight: FontWeight.w900)),
+      color: color.withValues(alpha: 0.7), fontSize: 10, fontWeight: FontWeight.w900)),
     const SizedBox(width: 3),
     Text(val, style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w700)),
   ]);
@@ -504,7 +544,7 @@ class _DRow extends StatelessWidget {
       ]),
       const SizedBox(height: 5),
       ThinBar(value: d.percent / 100,
-        gradient: [_c.withOpacity(0.5), _c], height: 5),
+        gradient: [_c.withValues(alpha: 0.5), _c], height: 5),
       const SizedBox(height: 4),
       Row(children: [
         Text('${d.percent.toStringAsFixed(1)}%  ${d.fstype}',

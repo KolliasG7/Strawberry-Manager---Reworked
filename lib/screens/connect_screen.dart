@@ -241,7 +241,7 @@ class _ConnectScreenState extends State<ConnectScreen>
 
                 if (cp.error != null)
                   GlassCard(
-                    tint: Bk.danger.withOpacity(0.25),
+                    tint: Bk.danger.withValues(alpha: 0.25),
                     padding: const EdgeInsets.all(AppSpacing.md),
                     child: Row(children: [
                       const Icon(Icons.error_outline,
@@ -314,7 +314,7 @@ class _ConnectScreenState extends State<ConnectScreen>
                 Text.rich(
                   TextSpan(
                     style: TextStyle(
-                      color: Bk.textDim.withOpacity(0.7),
+                      color: Bk.textDim.withValues(alpha: 0.7),
                       fontSize: 11, letterSpacing: 0.5),
                     children: const [
                       TextSpan(text: 'by '),
@@ -487,20 +487,50 @@ class _HeroTitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Column(children: [
-      Text(
-        'Strawberry Manager',
-        textAlign: TextAlign.center,
-        style: TextStyle(
-          color: Bk.textPri, fontSize: 26,
-          fontWeight: FontWeight.w800, letterSpacing: -0.4),
+    return Column(children: [
+      // Enhanced title with gradient effect
+      ShaderMask(
+        shaderCallback: (bounds) {
+          return const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Color(0xFF7DD3FC), // accent
+              Color(0xFFA5B4FC), // violet
+              Color(0xFFF472B6), // pink
+            ],
+          ).createShader(bounds);
+        },
+        child: const Text(
+          'Strawberry Manager',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 32,
+            fontWeight: FontWeight.w900,
+            letterSpacing: -0.5,
+          ),
+        ),
       ),
-      SizedBox(height: 2),
-      Text(
-        'PlayStation 4 · Linux Control',
-        textAlign: TextAlign.center,
-        style: TextStyle(
-          color: Bk.textSec, fontSize: 12, letterSpacing: 0.3),
+      const SizedBox(height: 8),
+      // Enhanced subtitle with better styling
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        decoration: BoxDecoration(
+          color: Bk.accent.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(AppRadii.pill),
+          border: Border.all(color: Bk.accent.withValues(alpha: 0.3), width: 1),
+        ),
+        child: const Text(
+          'PlayStation 4 · Linux Control',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: Bk.accent,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.5,
+          ),
+        ),
       ),
     ]);
   }
@@ -534,36 +564,44 @@ class _StatusPanel extends StatelessWidget {
           Row(children: [
             const StatLabel('STATUS'),
             const Spacer(),
+            // Enhanced status badge with glow effect
             Container(
               padding: const EdgeInsets.symmetric(
-                  horizontal: 10, vertical: 4),
+                  horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
-                color: stateColor.withOpacity(0.14),
+                color: stateColor.withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(AppRadii.pill),
                 border: Border.all(
-                    color: stateColor.withOpacity(0.32), width: 1),
+                    color: stateColor.withValues(alpha: 0.4), width: 1),
+                boxShadow: ready ? [
+                  BoxShadow(
+                    color: stateColor.withValues(alpha: 0.3),
+                    blurRadius: 8,
+                    spreadRadius: 1,
+                  ),
+                ] : null,
               ),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
                 Container(
-                  width: 6, height: 6,
+                  width: 8, height: 8,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     color: stateColor,
                     boxShadow: ready ? [
                       BoxShadow(
-                        color: stateColor.withOpacity(0.6),
+                        color: stateColor.withValues(alpha: 0.6),
                         blurRadius: 6,
                       ),
                     ] : null,
                   ),
                 ),
-                const SizedBox(width: 6),
+                const SizedBox(width: 8),
                 Text(stateLabel,
                   style: TextStyle(
                     color: stateColor,
-                    fontSize: 10.5,
+                    fontSize: 11,
                     fontWeight: FontWeight.w700,
-                    letterSpacing: 0.6,
+                    letterSpacing: 0.8,
                   )),
               ]),
             ),
@@ -573,21 +611,30 @@ class _StatusPanel extends StatelessWidget {
             style: TextStyle(
               color: Bk.textDim, fontSize: 10,
               letterSpacing: 1.2, fontWeight: FontWeight.w700)),
-          const SizedBox(height: 2),
-          Text(lastHost,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: T.mono.copyWith(
-              color: Bk.textPri,
-              fontSize: 18,
-              fontWeight: FontWeight.w800,
-              letterSpacing: -0.3,
-            )),
-          const SizedBox(height: 2),
+          const SizedBox(height: 4),
+          // Enhanced host display with better styling
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: Bk.glassDefault,
+              borderRadius: BorderRadius.circular(AppRadii.md),
+              border: Border.all(color: Bk.glassBorder, width: 1),
+            ),
+            child: Text(lastHost,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: T.mono.copyWith(
+                color: Bk.textPri,
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.3,
+              )),
+          ),
+          const SizedBox(height: 8),
           Row(children: [
             Icon(
               isTunnel ? Icons.cloud_outlined : Icons.wifi_outlined,
-              color: Bk.textSec, size: 12),
+              color: Bk.textSec, size: 14),
             const SizedBox(width: 4),
             Text(isTunnel ? 'Tunnel' : 'Local',
               style: const TextStyle(
@@ -648,7 +695,7 @@ class _ModeSegmented extends StatelessWidget {
                 border: Border.all(color: Bk.glassBorderHi),
                 boxShadow: [
                   BoxShadow(
-                    color: Bk.accent.withOpacity(0.18),
+                    color: Bk.accent.withValues(alpha: 0.18),
                     blurRadius: 18,
                     spreadRadius: -2,
                     offset: const Offset(0, 4),
@@ -756,9 +803,9 @@ class _LastTunnelRow extends StatelessWidget {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
           decoration: BoxDecoration(
-            color: Bk.accent.withOpacity(0.18),
+            color: Bk.accent.withValues(alpha: 0.18),
             borderRadius: BorderRadius.circular(AppRadii.sm),
-            border: Border.all(color: Bk.accent.withOpacity(0.5)),
+            border: Border.all(color: Bk.accent.withValues(alpha: 0.5)),
           ),
           child: const Text('USE',
             style: TextStyle(
@@ -815,9 +862,9 @@ class _RecentPayloadTile extends StatelessWidget {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
           decoration: BoxDecoration(
-            color: Bk.accent.withOpacity(0.18),
+            color: Bk.accent.withValues(alpha: 0.18),
             borderRadius: BorderRadius.circular(AppRadii.sm),
-            border: Border.all(color: Bk.accent.withOpacity(0.5)),
+            border: Border.all(color: Bk.accent.withValues(alpha: 0.5)),
           ),
           child: const Text('SEND',
             style: TextStyle(

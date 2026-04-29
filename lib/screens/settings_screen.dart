@@ -488,7 +488,30 @@ class _Header extends StatelessWidget {
           size: 38,
         ),
         const SizedBox(width: AppSpacing.md),
-        const Expanded(child: Text('Settings', style: T.display)),
+        Expanded(
+          child: ShaderMask(
+            shaderCallback: (bounds) {
+              return const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Color(0xFF7DD3FC), // accent
+                  Color(0xFFA5B4FC), // violet
+                  Color(0xFFF472B6), // pink
+                ],
+              ).createShader(bounds);
+            },
+            child: const Text(
+              'Settings',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 26,
+                fontWeight: FontWeight.w900,
+                letterSpacing: -0.3,
+              ),
+            ),
+          ),
+        ),
       ]),
     );
   }
@@ -521,20 +544,38 @@ class _Section extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(children: [
+            // Enhanced icon container with gradient border
             Container(
-              width: 36, height: 36,
+              width: 40, height: 40,
               decoration: BoxDecoration(
-                color: Bk.accent.withOpacity(0.16),
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Bk.accent.withValues(alpha: 0.2),
+                    Bk.accent.withValues(alpha: 0.1),
+                  ],
+                ),
                 borderRadius: BorderRadius.circular(AppRadii.sm),
-                border: Border.all(color: Bk.accent.withOpacity(0.4)),
+                border: Border.all(
+                  color: Bk.accent.withValues(alpha: 0.5),
+                  width: 1.5,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Bk.accent.withValues(alpha: 0.2),
+                    blurRadius: 8,
+                    spreadRadius: 1,
+                  ),
+                ],
               ),
-              child: Icon(icon, color: Bk.accent, size: 18),
+              child: Icon(icon, color: Bk.accent, size: 20),
             ),
             const SizedBox(width: AppSpacing.md),
             Expanded(child: Text(title,
               style: const TextStyle(
-                color: Bk.textPri, fontSize: 16,
-                fontWeight: FontWeight.w700, letterSpacing: -0.2))),
+                color: Bk.textPri, fontSize: 17,
+                fontWeight: FontWeight.w800, letterSpacing: -0.2))),
             if (trailing != null) trailing!,
           ]),
           const SizedBox(height: AppSpacing.md),
@@ -582,23 +623,64 @@ class _ToggleRow extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(label, style: const TextStyle(
-              color: Bk.textPri, fontSize: 14,
-              fontWeight: FontWeight.w600)),
+              color: Bk.textPri, fontSize: 15,
+              fontWeight: FontWeight.w700)),
             const SizedBox(height: 2),
             Text(sub, style: const TextStyle(
               color: Bk.textDim, fontSize: 12)),
           ],
         )),
         const SizedBox(width: AppSpacing.md),
-        Switch(
-          value: value,
-          onChanged: (v) {
-            HapticFeedback.selectionClick();
-            onChanged(v);
-          },
-          activeColor: Bk.accent,
-          inactiveThumbColor: Bk.textDim,
-          inactiveTrackColor: Bk.glassSubtle,
+        // Enhanced toggle switch with better styling
+        Container(
+          width: 52, height: 28,
+          decoration: BoxDecoration(
+            color: value ? Bk.accent : Bk.glassSubtle,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: value ? Bk.accent : Bk.glassBorder,
+              width: 1.5,
+            ),
+            boxShadow: value ? [
+              BoxShadow(
+                color: Bk.accent.withValues(alpha: 0.4),
+                blurRadius: 8,
+                spreadRadius: 1,
+              ),
+            ] : null,
+          ),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () {
+                HapticFeedback.selectionClick();
+                onChanged(!value);
+              },
+              borderRadius: BorderRadius.circular(14),
+              child: Padding(
+                padding: const EdgeInsets.all(2),
+                child: AnimatedAlign(
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeInOut,
+                  alignment: value ? Alignment.centerRight : Alignment.centerLeft,
+                  child: Container(
+                    width: 22, height: 22,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.2),
+                          blurRadius: 4,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
         ),
       ]),
     );
@@ -622,15 +704,26 @@ class _FilePickerRow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(
           horizontal: AppSpacing.md, vertical: AppSpacing.md),
       child: Row(children: [
+        // Enhanced file icon container
         Container(
-          width: 38, height: 38,
+          width: 42, height: 42,
           decoration: BoxDecoration(
-            color: Bk.glassRaised,
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Bk.glassRaised,
+                Bk.glassDefault,
+              ],
+            ),
             borderRadius: BorderRadius.circular(AppRadii.sm),
-            border: Border.all(color: Bk.glassBorderHi),
+            border: Border.all(color: Bk.glassBorderHi, width: 1.5),
           ),
-          child: const Icon(Icons.insert_drive_file_outlined,
-            color: Bk.textSec, size: 18),
+          child: Icon(
+            name == null ? Icons.insert_drive_file_outlined : Icons.description_outlined,
+            color: name == null ? Bk.textDim : Bk.accent,
+            size: 20,
+          ),
         ),
         const SizedBox(width: AppSpacing.md),
         Expanded(child: Column(
@@ -639,8 +732,8 @@ class _FilePickerRow extends StatelessWidget {
             Text(name ?? 'Select payload file',
               style: TextStyle(
                 color: name == null ? Bk.textDim : Bk.textPri,
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
               ),
               overflow: TextOverflow.ellipsis),
             const SizedBox(height: 2),
